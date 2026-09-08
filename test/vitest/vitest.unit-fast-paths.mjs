@@ -159,6 +159,8 @@ const broadUnitFastCandidateGlobs = [
 ];
 const ownerRoutedUnitTestPatterns = [
   ...cliProcessTestFiles,
+  // The notice proof owns real Gateway/plugin state and a Telegram HTTP transport.
+  "test/telegram-recovery-notice-send.test.ts",
   // Real Git process-tree fixtures stay in serial tooling even when their
   // subprocess harness moves into shared test support.
   "test/scripts/ci-git-owner.test.ts",
