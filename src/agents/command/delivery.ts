@@ -30,7 +30,6 @@ import { resolveChannelDefaultAccountId } from "../../channels/plugins/helpers.j
 import { getChannelPlugin, normalizeChannelId } from "../../channels/plugins/index.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.public.js";
 import { createReplyPrefixContext } from "../../channels/reply-prefix.js";
-import { claimDirectPendingFinalBatch } from "../../channels/turn/direct-delivery-custody.js";
 import { formatUnknownChannelMessage } from "../../cli/error-format.js";
 import { createOutboundSendDeps, type CliDeps } from "../../cli/outbound-send-deps.js";
 import type { SessionEntry } from "../../config/sessions.js";
@@ -89,7 +88,7 @@ function createRestartOnlyAbortSignal(source: AbortSignal | undefined): {
 }
 
 /** Aggregate delivery status for an agent command result. */
-export type AgentCommandDeliveryStatus = {
+type AgentCommandDeliveryStatus = {
   requested: true;
   attempted: boolean;
   status: "sent" | "suppressed" | "partial_failed" | "failed";
@@ -145,8 +144,6 @@ type DeliverAgentCommandResultParams = {
   payloads: ReplyPayload[] | undefined;
   /** Channel plugin already selected and bootstrapped by the caller. */
   preparedPlugin?: ChannelPlugin;
-  /** Producer-owned success, not inferred from an empty normalized payload list. */
-  successfulTerminal?: boolean;
   assertDeliveryCurrent?: () => void;
   onDeliveryResult?: (result: AgentCommandDeliveryResult) => void;
 } & FreshSessionDeliveryRefreshParams;
@@ -924,16 +921,6 @@ export async function deliverAgentCommandResult(
           replyNormalization.kind === "suppress" ? replyNormalization.reason : undefined,
         ))
       : undefined;
-    if (opts.channelReply && deliveryStatus?.succeeded === true) {
-      // Empty and constrained finals must cross the same presentation checkpoint
-      // as visible finals, before post-run cleanup can retire their recovery owner.
-      params.assertDeliveryCurrent?.();
-      deliveryStatus = await opts.channelReply.deliverFinal(
-        [],
-        undefined,
-        params.successfulTerminal === true,
-      );
-    }
     const deliverySucceeded = deliveryStatus?.succeeded === true ? true : undefined;
     emitJsonEnvelope(deliveryStatus);
     return captureDeliveryResult(
@@ -969,40 +956,6 @@ export async function deliverAgentCommandResult(
     emitJsonEnvelope();
     return captureDeliveryResult(
       buildDeliveryResult({ payloads: normalizedPayloads, meta: result.meta, result }),
-    );
-  }
-  if (opts.channelReply && deliveryChannel && deliveryTarget && !deliveryStatus) {
-    params.assertDeliveryCurrent?.();
-    const batch = await claimDirectPendingFinalBatch(deliveryPayloads);
-    try {
-      params.assertDeliveryCurrent?.();
-      deliveryStatus = await opts.channelReply.deliverFinal(
-        batch?.payloads ?? deliveryPayloads,
-        batch?.custody,
-      );
-    } catch (error) {
-      await batch?.settle("unknown");
-      throw error;
-    }
-    deliverySucceeded = deliveryStatus.succeeded === true;
-    const outcomes = deliveryStatus.payloadOutcomes;
-    // A proven no-send may replay the whole batch. A sent sibling, ambiguous
-    // final, or independent durable custodian must never replay that sibling.
-    const provenNoSend =
-      outcomes?.length &&
-      outcomes.every(
-        (outcome) =>
-          outcome.status === "suppressed" ||
-          (outcome.status === "failed" && !outcome.sentBeforeError),
-      );
-    await batch?.settle(
-      deliverySucceeded
-        ? deliveryStatus.status === "suppressed"
-          ? "suppressed"
-          : "delivered"
-        : provenNoSend
-          ? "prepared"
-          : "unknown",
     );
   }
   if (deliver && deliveryChannel && !isInternalMessageChannel(deliveryChannel)) {

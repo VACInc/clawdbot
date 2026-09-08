@@ -3,7 +3,7 @@ import { parseStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
 import { createChannelHistoryWindow } from "openclaw/plugin-sdk/reply-history";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
-import type { TelegramReplyContext as TelegramMessageContext } from "./bot-message-context.js";
+import type { TelegramMessageContext } from "./bot-message-context.js";
 import {
   buildTelegramGroupFrom,
   buildTelegramGroupPeerId,
@@ -171,15 +171,14 @@ export function resolveDispatchTelegramContext(params: {
   const recoveredFrom = params.context.isGroup
     ? buildTelegramGroupFrom(params.context.chatId, threadSpec)
     : params.context.ctxPayload.From;
-  const updateLastRoute = params.context.turn?.record.updateLastRoute;
   const recoveredUpdateLastRoute =
-    updateLastRoute && threadSpec.id != null
+    params.context.turn.record.updateLastRoute && threadSpec.id != null
       ? {
-          ...updateLastRoute,
+          ...params.context.turn.record.updateLastRoute,
           to: `telegram:${params.context.chatId}:topic:${threadSpec.id}`,
           threadId: String(threadSpec.id),
         }
-      : updateLastRoute;
+      : params.context.turn.record.updateLastRoute;
   const recoveredHistoryKey = params.context.isGroup
     ? buildTelegramGroupPeerId(params.context.chatId, threadSpec)
     : params.context.historyKey;
@@ -264,15 +263,13 @@ export function resolveDispatchTelegramContext(params: {
     replyThreadId: threadSpec.id,
     sendTyping: recoveredSendTyping,
     sendRecordVoice: recoveredSendRecordVoice,
-    turn: params.context.turn
-      ? {
-          ...params.context.turn,
-          record: {
-            ...params.context.turn.record,
-            updateLastRoute: recoveredUpdateLastRoute,
-          },
-        }
-      : undefined,
+    turn: {
+      ...params.context.turn,
+      record: {
+        ...params.context.turn.record,
+        updateLastRoute: recoveredUpdateLastRoute,
+      },
+    },
     ctxPayload: params.context.ctxPayload,
   };
   return recovered;

@@ -4,10 +4,6 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
 import { describe, expect, it } from "vitest";
-import {
-  getReplyPayloadMetadata,
-  setReplyPayloadMetadata,
-} from "../../auto-reply/reply-payload.js";
 import { markInboundContextLabel } from "../../auto-reply/reply/inbound-context-marker.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import { typedCases } from "../../test-utils/typed-cases.js";
@@ -36,44 +32,6 @@ function resolveMirrorProjection(payloads: readonly ReplyPayload[]) {
 }
 
 describe("normalizeReplyPayloadsForDelivery", () => {
-  it("preserves custody and writer authority in runtime projections but not JSON data", () => {
-    const metadata = {
-      pendingFinalDeliveryCompletion: {
-        deliveryId: "batch",
-        intentId: "intent",
-        sessionId: "session",
-        sessionKey: "agent:main:main",
-        storePath: "/isolated/sessions.json",
-      },
-      sessionWriterDeliveryAuthority: {
-        expectedSessionId: "session",
-        expectedWriterRunId: "writer",
-        sessionKey: "agent:main:main",
-      },
-      assistantMessageIndex: 7,
-      onFinalDeliverySettled: () => {},
-    };
-    const plan = createOutboundPayloadPlan([
-      setReplyPayloadMetadata({ text: "[[reply_to_current]] Visible final" }, metadata),
-    ]);
-    for (const payload of [
-      ...projectOutboundPayloadPlanForDelivery(plan),
-      ...projectOutboundPayloadPlanForOutbound(plan),
-    ]) {
-      expect(payload.text).toBe("Visible final");
-      expect(getReplyPayloadMetadata(payload)).toEqual(metadata);
-      expect(JSON.stringify(payload)).not.toMatch(
-        /pendingFinal|Writer|onFinal|assistantMessageIndex/,
-      );
-    }
-    const jsonPayloads = projectOutboundPayloadPlanForJson(plan);
-    expect(jsonPayloads).toHaveLength(1);
-    for (const json of jsonPayloads) {
-      expect(getReplyPayloadMetadata(json)).toBeUndefined();
-      const wirePayload = JSON.stringify(json);
-      expect(JSON.parse(wirePayload)).toEqual({ text: "Visible final", mediaUrl: null });
-    }
-  });
   it.each(["photo.png", "café 100% image.png"])(
     "deduplicates a file URL directive with its explicit local path: %s",
     (fileName) => {

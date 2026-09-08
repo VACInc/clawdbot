@@ -113,7 +113,7 @@ export function createBlockReplyDeliveryHandler(params: {
   normalizeStreamingText: (payload: ReplyPayload) => { text?: string; skip: boolean };
   applyReplyToMode: (payload: ReplyPayload) => ReplyPayload;
   normalizeMediaPaths?: (payload: ReplyPayload) => Promise<ReplyPayload>;
-  typingSignals: Pick<TypingSignaler, "signalTextDelta">;
+  typingSignals: TypingSignaler;
   reasoningPayloadsEnabled?: boolean;
   commentaryPayloadsEnabled?: boolean;
   blockStreamingEnabled: boolean;

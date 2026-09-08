@@ -50,11 +50,7 @@ export function resolveCommandRecoveryOptions(params: {
       "internal delivery media constraints require automatic delivery with restart-safe tools and no message tool",
     );
   }
-  // Retained media/text constraints apply at final normalization. Installing stream
-  // callbacks before that checkpoint could replay text or send unrelated media.
-  return opts.internalDeliveryMediaUrls !== undefined && opts.channelReply
-    ? { ...opts, channelReply: { ...opts.channelReply, options: undefined } }
-    : opts;
+  return opts;
 }
 
 function normalizeOptionalThreadId(value: unknown): string | undefined {

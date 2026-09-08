@@ -53,7 +53,6 @@ import {
 import type { GatewayCronCreatorAuthorityAdmission } from "../server-methods/cron-creator-authority-admission.js";
 import { formatForLog } from "../ws-log.js";
 import { setGatewayDedupeEntries } from "./agent-dedupe.js";
-import { runAgentWithRecoveryChannelReply } from "./agent-recovery-channel-reply.js";
 import { readAgentRunDispatchExecutionIdentity } from "./agent-run-dispatch-execution-identity.js";
 import type { AgentTurnContext, AgentTurnIo } from "./types.js";
 
@@ -257,48 +256,19 @@ export function dispatchAgentRunFromGateway(params: {
         },
       }
     : ingressOptsWithSpawnFacts;
-  const recoveryRunOwner = params.context.chatAbortControllers.get(params.runId);
-  const assertRecoveryRunOwnerCurrent = () => {
-    const entry = recoveryRunOwner;
-    const authority = entry?.agentRunDelegatedAuthority;
-    if (
-      runOwnerCleanedUp ||
-      !entry ||
-      params.context.chatAbortControllers.get(params.runId) !== entry ||
-      entry.controller !== params.abortController ||
-      entry.sessionKey !== params.ingressOpts.sessionKey ||
-      !entry.operationalRunInstance ||
-      entry.operationalRunInstance !== params.ingressOpts.operationalRunInstance ||
-      !entry.lifecycleGeneration ||
-      entry.lifecycleGeneration !== params.ingressOpts.lifecycleGeneration ||
-      !isAgentEventLifecycleGenerationCurrent(entry.lifecycleGeneration) ||
-      entry.registrationCleanupRequested ||
-      params.abortController.signal.aborted ||
-      (entry.executionStarted && !authority) ||
-      (authority &&
-        (authority.operationalRunInstance !== entry.operationalRunInstance ||
-          !validateAgentRunDelegatedAuthority(authority)))
-    ) {
-      throw new Error("Restart presentation no longer owns the Gateway run");
-    }
-  };
   const runAgent = () =>
     runWithCanonicalSkillWorkspace(params.canonicalSkillWorkspaceDir, () =>
-      runAgentWithRecoveryChannelReply({
-        opts: cronCreatorAuthorityCapability
+      agentCommandFromGatewayIngress(
+        cronCreatorAuthorityCapability
           ? { ...ingressOptsWithTaskBinding, cronCreatorAuthorityCapability }
           : ingressOptsWithTaskBinding,
-        cfg: params.commandRuntimeContext?.config ?? params.context.getRuntimeConfig(),
-        assertCurrent: assertRecoveryRunOwnerCurrent,
-        run: (opts) =>
-          agentCommandFromGatewayIngress(
-            opts,
-            defaultRuntime,
-            params.context.deps,
-            { restoreAdmittedRecovery: params.restoreAdmittedRecovery },
-            params.commandRuntimeContext,
-          ),
-      }),
+        defaultRuntime,
+        params.context.deps,
+        {
+          restoreAdmittedRecovery: params.restoreAdmittedRecovery,
+        },
+        params.commandRuntimeContext,
+      ),
     );
   const agentRun = cronCreatorAuthorityCapability
     ? runWithCronCreatorAuthorityCapability(

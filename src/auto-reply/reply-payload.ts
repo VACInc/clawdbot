@@ -7,7 +7,6 @@ import {
 import type { ReplyToMode } from "../config/types.base.js";
 import type { AssistantDeliveryTtsFacts } from "../llm/types.js";
 import type { ReplyPayload, ReplyPayloadTtsSupplement } from "../shared/reply-payload.types.js";
-import type { ReplyDispatchDeliveryOutcome } from "./reply/reply-dispatch-outcome.js";
 
 export type {
   ReplyMediaAttachment,
@@ -217,8 +216,6 @@ export type ReplyPayloadMetadata = {
   commandReply?: true;
   /** Host-owned acknowledgement after this final payload is confirmed delivered. */
   onFinalDeliverySuccess?: () => void;
-  /** Exact terminal payload outcome, including block coverage and intentional suppression. */
-  onFinalDeliverySettled?: (outcome: ReplyDispatchDeliveryOutcome, pending: boolean) => void;
   /** Host-projected monitoring final; notification policy already normalized its text. */
   heartbeatReply?: true;
   /** Exact key for replacing a runtime-owned assistant row after media materialization. */

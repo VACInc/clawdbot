@@ -269,7 +269,6 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
     suppressionReason?: NormalizeReplySkipReason;
     sessionWriterDeliveryRevoked?: true;
     dispatcherOutcome?: Promise<ReplyDispatchDeliveryOutcome>;
-    hasPendingDelivery?: () => boolean;
     routedOutcome?: ReplyDispatchDeliveryOutcome;
   }> => {
     const abortSignal =
@@ -447,13 +446,11 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
           cfg,
         });
       }
-      const pendingDelivery = result.queueCustody === "held" || result.ambiguous === true;
       return {
         pendingBlock,
         queuedFinal: result.ok,
         routedFinalCount: isRoutedReplyDelivered(result) ? 1 : 0,
         routedOutcome,
-        hasPendingDelivery: () => pendingDelivery,
         ...(result.reason === "channel_transform"
           ? { suppressionReason: "channel_transform" as const }
           : {}),
@@ -517,11 +514,10 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
         buildCaptionedFinalTextFallback(normalizedPayload),
       );
     }
-    const {
-      queued: queuedFinal,
-      outcome: dispatcherOutcome,
-      hasPendingDelivery,
-    } = turnLedger.sendQueued("final", normalizedPayload);
+    const { queued: queuedFinal, outcome: dispatcherOutcome } = turnLedger.sendQueued(
+      "final",
+      normalizedPayload,
+    );
     if (queuedFinal && deliveredTranscriptMirror && dispatcherOutcome) {
       // The common settle owner runs this after successful delivery or
       // cancellation. Keeping reconciliation out of the reply operation avoids
@@ -538,7 +534,7 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
       pendingBlock,
       queuedFinal,
       routedFinalCount: 0,
-      ...(queuedFinal && dispatcherOutcome ? { dispatcherOutcome, hasPendingDelivery } : {}),
+      ...(queuedFinal && dispatcherOutcome ? { dispatcherOutcome } : {}),
     };
   };
 

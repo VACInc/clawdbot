@@ -36,12 +36,24 @@ export type GatewayApprovalEventPublisher = {
 
 export type GatewayRecoverySessionMethod = "chat.history" | "chat.abort" | "sessions.delete";
 
+export type GatewayRecoveryTypingParams = {
+  agentId?: string;
+  channel: string;
+  to: string;
+  accountId?: string;
+  threadId?: string | number;
+  runId: string;
+  isCurrent: (cfg: import("../config/types.openclaw.js").OpenClawConfig) => boolean;
+};
+
 export type GatewayRecoveryRuntime = {
   dispatchSessionMethod: <T = unknown>(
     method: GatewayRecoverySessionMethod,
     params: unknown,
     options?: { timeoutMs?: number; signal?: AbortSignal; assertCurrent?: () => void },
   ) => Promise<T>;
+  /** Best-effort activity only; never owns or modifies reply delivery. */
+  startRecoveryTyping?: (params: GatewayRecoveryTypingParams) => () => void;
   dispatchAgent: <T = unknown>(
     params: AgentRunRequest,
     timeoutMs?: number,

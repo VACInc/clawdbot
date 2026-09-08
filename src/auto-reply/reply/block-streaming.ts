@@ -8,17 +8,6 @@ import { normalizeAccountId } from "../../routing/session-key.js";
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
 import { resolveChunkMode, resolveTextChunkLimit, type TextChunkProvider } from "../chunk.js";
 
-/** One block-streaming eligibility policy for ordinary and command reply turns. */
-export function resolveBlockStreamingEnabled(
-  defaults: NonNullable<OpenClawConfig["agents"]>["defaults"],
-  options: { disableBlockStreaming?: boolean } | undefined,
-): boolean {
-  return (
-    options?.disableBlockStreaming === false ||
-    (options?.disableBlockStreaming !== true && defaults?.blockStreamingDefault === "on")
-  );
-}
-
 const DEFAULT_BLOCK_STREAM_MIN = 800;
 const DEFAULT_BLOCK_STREAM_MAX = 1200;
 const DEFAULT_BLOCK_STREAM_COALESCE_IDLE_MS = 1000;
