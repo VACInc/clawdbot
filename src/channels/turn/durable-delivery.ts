@@ -234,6 +234,8 @@ export async function deliverInboundReplyWithMessageSendContextCore(
       ? { requireUnknownSendReconciliation: true }
       : {}),
     session,
+    onPlatformSendDispatch: params.info.onPlatformSendDispatch,
+    assertDirectAdapterHandoff: params.info.assertPlatformSendAuthorized,
     gatewayClientScopes: params.ctxPayload.GatewayClientScopes ?? [],
   });
   if (send.status === "failed") {

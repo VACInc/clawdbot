@@ -18,10 +18,13 @@ export async function runAgentWithRecoveryChannelReply<T>(params: {
   run: (opts: AgentCommandGatewayIngressOpts) => Promise<T>;
 }): Promise<T> {
   const { opts } = params;
+  if (opts.mainRestartRecoveryAdmitted && opts.sourceReplyDeliveryMode === "message_tool_only") {
+    // An explicit source policy still wins if a lower-level caller requests delivery.
+    return params.run({ ...opts, deliver: false });
+  }
   if (
     !opts.mainRestartRecoveryAdmitted ||
     !opts.deliver ||
-    opts.sourceReplyDeliveryMode === "message_tool_only" ||
     !opts.channel ||
     !opts.to ||
     !opts.sessionKey ||

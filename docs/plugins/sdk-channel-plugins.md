@@ -125,6 +125,11 @@ Reuse presentation without calling inbound ingest, recording another user
 message, or manufacturing sender or approval authority. Context fields describe
 the destination; they are not a substitute for `assertCurrent`. A transport
 queue must recheck the fence after its wait, not only when work is enqueued.
+When presentation hands a final reply to
+`deliverInboundReplyWithMessageSendContext`, preserve the dispatch info
+callbacks (`onPlatformSendDispatch` and `assertPlatformSendAuthorized`). The
+durable sender carries those checks through its own preparation and retries;
+switching delivery owners must not discard the live recovery fence.
 
 Do not return while owned previews, queued delivery, or typing cleanup remain
 unsettled. Propagate presentation failures after cleanup. The host retains
