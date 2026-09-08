@@ -291,12 +291,7 @@ export async function sendPayload(
       agentId: turn.context.route.agentId,
       ctxPayload: turn.context.ctxPayload,
       payload: effectivePayload,
-      info: {
-        kind: "final",
-        // Durable delivery must retain the caller's live operational and custody fences.
-        onPlatformSendDispatch: options?.onPlatformSendDispatch,
-        assertPlatformSendAuthorized: options?.assertPlatformSendAuthorized,
-      },
+      info: { kind: "final" },
       replyToMode: effectiveReplyToMode,
       threadId: turn.context.threadSpec.id,
       formatting: {

@@ -28,7 +28,6 @@ import {
 } from "../../tasks/task-status-access.js";
 import { createAgentLifecycleTerminalBackstop } from "./agent-lifecycle-terminal.js";
 import { resolveRunAuthProfile } from "./agent-runner-auth-profile.js";
-import { createCliCommentaryHandler } from "./agent-runner-cli-commentary.js";
 import {
   createCliReasoningStreamBridge,
   createCliToolSummaryTracker,
@@ -38,6 +37,7 @@ import {
 import { buildCommandOutputFromToolResultEvent } from "./agent-runner-command-output.js";
 import type { AgentFallbackCandidateCommonParams } from "./agent-runner-fallback-cycle.types.js";
 import { resolveRunModelHasVision } from "./agent-runner-run-params.js";
+import { shouldBridgeCliPreambleEvents } from "./get-reply.types.js";
 import { hasInboundAudio } from "./inbound-media.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { resolveReplyOperationTerminationFields } from "./reply-operation-abort.js";
@@ -138,7 +138,11 @@ export async function runCliFallbackCandidate(
       await onCommandOutput(commandOutput);
     }
   };
-
+  const bridgeCliPreambleProgress =
+    Boolean(turn.opts?.onItemEvent) && shouldBridgeCliPreambleEvents(turn.opts);
+  const bridgeCliDurableCommentary =
+    Boolean(params.presentation.blockReplyHandler) &&
+    (turn.blockStreamingEnabled || turn.opts?.commentaryPayloadsEnabled === true);
   const toolAuthorityRoute = { provider: params.provider, model: params.model };
   const toolAuthorityFingerprint = turn.replyOperation?.bindToolAuthorityRoute(toolAuthorityRoute);
   const result = await params.timing.measure("cli_run", () =>
@@ -283,11 +287,34 @@ export async function runCliFallbackCandidate(
               ),
             ]);
           },
-          onCommentaryText: createCliCommentaryHandler({
-            options: turn.opts,
-            blockStreamingEnabled: turn.blockStreamingEnabled,
-            onBlockReply: params.presentation.blockReplyHandler,
-          }),
+          onCommentaryText:
+            bridgeCliPreambleProgress || bridgeCliDurableCommentary
+              ? async (payload) => {
+                  const deliveries: unknown[] = [];
+                  if (bridgeCliPreambleProgress) {
+                    deliveries.push(
+                      turn.opts?.onItemEvent?.({
+                        itemId: payload.itemId,
+                        kind: "preamble",
+                        progressText: payload.text,
+                        // The block bridge owns durability; this event remains a progress preview.
+                        ...(bridgeCliDurableCommentary ? { suppressDurableProgress: true } : {}),
+                      }),
+                    );
+                  }
+                  if (bridgeCliDurableCommentary) {
+                    // Block mode treats completed CLI text as an ordinary answer block so
+                    // the existing pipeline owns coalescing and final-payload dedupe.
+                    deliveries.push(
+                      params.presentation.blockReplyHandler?.({
+                        text: payload.text,
+                        ...(turn.blockStreamingEnabled ? {} : { isCommentary: true }),
+                      }),
+                    );
+                  }
+                  await Promise.all(deliveries);
+                }
+              : undefined,
           onFastModeAutoProgress: async (payload) => {
             await turn.opts?.onToolResult?.(payload);
           },

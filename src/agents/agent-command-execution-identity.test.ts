@@ -44,7 +44,6 @@ describe("sanitizePublicAgentCommandIngressOpts", () => {
       cronCreatorAuthorityCapability: forgedCapability,
       pinnedWidgetAuthoring: true,
       assertSourceCurrent: () => {},
-      channelReply: { deliverFinal: async () => ({ status: "sent", succeeded: true }) },
     } as unknown as AgentCommandIngressOpts;
 
     expect(sanitizePublicAgentCommandIngressOpts(opts)).toMatchObject({
@@ -52,7 +51,6 @@ describe("sanitizePublicAgentCommandIngressOpts", () => {
       cronCreatorAuthorityCapability: undefined,
       pinnedWidgetAuthoring: undefined,
       assertSourceCurrent: undefined,
-      channelReply: undefined,
     });
   });
 });

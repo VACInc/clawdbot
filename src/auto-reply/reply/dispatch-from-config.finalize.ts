@@ -25,19 +25,6 @@ import {
   clearPendingFinalDeliveryAfterSuccess,
   suppressPendingFinalDelivery,
 } from "./dispatch-from-config.pending-final.js";
-import type { ReplyDispatchDeliveryOutcome } from "./reply-dispatch-outcome.js";
-
-function observeFinalReplyDelivery(
-  reply: ReplyPayload,
-  outcome: ReplyDispatchDeliveryOutcome,
-  pending = false,
-): void {
-  const metadata = getReplyPayloadMetadata(reply);
-  metadata?.onFinalDeliverySettled?.(outcome, pending);
-  if (outcome === "delivered" && !pending) {
-    metadata?.onFinalDeliverySuccess?.();
-  }
-}
 
 type ExecuteDispatchReadyState = Extract<
   Awaited<ReturnType<typeof executeDispatch>>,
@@ -141,13 +128,11 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       if (reply.isReasoning === true && !state.reasoningPayloadsEnabled) {
         await suppressPendingFinalDelivery(reply, pendingFinalOptions);
         await heartbeatReply?.settle?.("cancelled");
-        observeFinalReplyDelivery(reply, "cancelled");
         continue;
       }
       if (reply.isCommentary === true && !state.commentaryPayloadsEnabled) {
         await suppressPendingFinalDelivery(reply, pendingFinalOptions);
         await heartbeatReply?.settle?.("cancelled");
-        observeFinalReplyDelivery(reply, "cancelled");
         continue;
       }
       if (suppressDelivery && !shouldDeliverDespiteSourceReplySuppression(reply, state)) {
@@ -167,14 +152,12 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
         }
         await suppressPendingFinalDelivery(reply, pendingFinalOptions);
         await heartbeatReply?.settle?.("cancelled");
-        observeFinalReplyDelivery(reply, "cancelled");
         continue;
       }
       const finalPayloadDedupeKey = createFinalDispatchPayloadDedupeKey(reply);
       if (sentFinalPayloadDedupeKeys.has(finalPayloadDedupeKey)) {
         await suppressPendingFinalDelivery(reply, pendingFinalOptions);
         await heartbeatReply?.settle?.("cancelled");
-        observeFinalReplyDelivery(reply, "cancelled");
         continue;
       }
       sentFinalPayloadDedupeKeys.add(finalPayloadDedupeKey);
@@ -188,30 +171,6 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
             }
           : {}),
       });
-      // A matching block is the terminal payload too; unrelated tool/progress
-      // counts cannot establish final delivery. Observe the selected owner.
-      const finalOutcome = finalReply.sessionWriterDeliveryRevoked
-        ? "failed-before-deliver"
-        : finalReply.suppressionReason
-          ? "cancelled"
-          : finalReply.pendingBlock
-            ? "recovery-owned"
-            : (finalReply.dispatcherOutcome ??
-              finalReply.blockDeliveryOutcome ??
-              finalReply.routedOutcome);
-      const finalMetadata = getReplyPayloadMetadata(reply);
-      if (
-        finalOutcome !== undefined &&
-        (finalMetadata?.onFinalDeliverySettled || finalMetadata?.onFinalDeliverySuccess)
-      ) {
-        registerReplyDispatcherSettledTask(dispatcher, async () => {
-          observeFinalReplyDelivery(
-            reply,
-            await finalOutcome,
-            finalReply.pendingBlock === true || finalReply.hasPendingDelivery?.() === true,
-          );
-        });
-      }
       if (heartbeatReply?.settle) {
         const settle = heartbeatReply.settle;
         const outcome =
@@ -257,6 +216,20 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       if (finalReply.pendingBlock) {
         // Final-only media cannot confirm or clear the block's independent pending text.
         continue;
+      }
+      // Queue admission can still be cancelled or fail. Keep the owner's receipt
+      // until this exact final payload settles as delivered.
+      const onFinalDeliverySuccess = getReplyPayloadMetadata(reply)?.onFinalDeliverySuccess;
+      if (onFinalDeliverySuccess) {
+        if (finalReply.dispatcherOutcome) {
+          registerReplyDispatcherSettledTask(dispatcher, async () => {
+            if ((await finalReply.dispatcherOutcome) === "delivered") {
+              onFinalDeliverySuccess();
+            }
+          });
+        } else if (finalReply.routedFinalCount > 0) {
+          onFinalDeliverySuccess();
+        }
       }
       // Metadata survives usage, threading, and transcript decoration; object identity does not.
       if (pendingContinuationSettlement && getReplyPayloadMetadata(reply)?.continuationStatus) {

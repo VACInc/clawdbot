@@ -1,6 +1,5 @@
 import { createLazyAcpElicitationHandler } from "../../auto-reply/reply/acp-elicitation-handler-lazy.js";
 import { resolveInlineAgentImageAttachments } from "../../auto-reply/reply/agent-turn-attachments.js";
-import { normalizeThinkLevel, normalizeVerboseLevel } from "../../auto-reply/thinking.shared.js";
 import { recordAgentRunTerminalOutcome } from "../../channels/turn/agent-run-terminal-outcome.js";
 import type { CliDeps } from "../../cli/deps.types.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
@@ -26,7 +25,6 @@ import {
 import { prepareInternalSessionEffectsSession } from "../internal-session-effects.js";
 import type { AgentRunSessionTarget } from "../run-session-target.js";
 import { isAgentRunRestartAbortReason } from "../run-termination.js";
-import { createCommandChannelReplyPresentation } from "./channel-reply-callbacks.js";
 import { applyAgentRunAbortMetadata } from "./lifecycle.js";
 import type { PreparedAgentCommandExecution } from "./prepare.js";
 import {
@@ -95,11 +93,6 @@ export async function runAcpAgentCommand(params: {
   let stopReason: string | undefined;
   let resultStatus: "completed" | "cancelled" | undefined;
   let terminalOutcome: "blocked" | undefined;
-  let projector:
-    | ReturnType<
-        (typeof import("../../auto-reply/reply/acp-projector.js"))["createAcpReplyProjector"]
-      >
-    | undefined;
   try {
     const {
       resolveAcpAgentPolicyError,
@@ -140,51 +133,6 @@ export async function runAcpAgentCommand(params: {
         return false;
       }
     };
-    const channelPresentation = await createCommandChannelReplyPresentation({
-      opts: params.opts,
-      cfg: params.cfg,
-      workspaceDir: params.workspaceDir,
-      conversationContext: params.body,
-      sessionKey: params.sessionKey,
-      storePath: params.storePath,
-      runId: params.runId,
-      provider: "acp",
-      model: params.sessionEntry?.model ?? "acp",
-      thinkLevel: normalizeThinkLevel(params.sessionEntry?.thinkingLevel),
-      resolvedVerboseLevel:
-        normalizeVerboseLevel(params.sessionEntry?.verboseLevel) ??
-        params.cfg.agents?.defaults?.verboseDefault ??
-        "off",
-    });
-    const channelCallbacks = channelPresentation?.callbacks;
-    if (channelCallbacks) {
-      const { createAcpReplyProjector } = await import("../../auto-reply/reply/acp-projector.js");
-      let projectedText = "";
-      projector = createAcpReplyProjector({
-        cfg: params.cfg,
-        shouldSendToolSummaries: channelCallbacks.shouldEmitToolResult?.() ?? false,
-        shouldSendToolSummariesNow: channelCallbacks.shouldEmitToolResult,
-        shouldSendFullToolDetails: channelCallbacks.shouldEmitToolOutput?.() ?? false,
-        getConversationContext: () => params.body,
-        provider: params.opts.channel,
-        accountId: params.opts.accountId,
-        onProgress: () => {
-          channelCallbacks.onExecutionStarted?.();
-        },
-        deliver: async (kind, payload) => {
-          if (kind === "tool") {
-            await channelCallbacks.onToolResult?.(payload);
-          } else {
-            projectedText += payload.text ?? "";
-            await channelCallbacks.onPartialReply?.({ ...payload, text: projectedText });
-            if (kind === "block") {
-              await channelCallbacks.onBlockReply?.(payload);
-            }
-          }
-          return true;
-        },
-      });
-    }
     const onElicitation = createLazyAcpElicitationHandler({
       sourceSessionKey: params.opts.inputProvenance?.sourceSessionKey ?? params.sessionKey,
       targetSessionKey: params.sessionKey,
@@ -197,7 +145,6 @@ export async function runAcpAgentCommand(params: {
             throw new Error("ACP input request is no longer active.");
           }
           if (payload.text) {
-            await projector?.onEvent({ type: "status", text: payload.text, tag: "elicitation" });
             attemptExecutionRuntime.emitAcpRuntimeEvent({
               runId: params.runId,
               toolTracker: acpToolTracker,
@@ -230,7 +177,6 @@ export async function runAcpAgentCommand(params: {
           throw new Error("ACP input could not enter the session transcript");
         }
         params.opts.onExecutionStarted?.();
-        channelCallbacks?.onExecutionStarted?.();
       },
       onLifecycle: (event) => {
         if (event.type === "prompt_submitted") {
@@ -241,7 +187,7 @@ export async function runAcpAgentCommand(params: {
           });
         }
       },
-      onEvent: async (event) => {
+      onEvent: (event) => {
         if (event.type !== "text_delta") {
           attemptExecutionRuntime.emitAcpRuntimeEvent({
             runId: params.runId,
@@ -255,32 +201,29 @@ export async function runAcpAgentCommand(params: {
         if (event.type === "done") {
           stopReason = event.stopReason;
           resultStatus = event.status;
-        } else if (
-          event.type === "text_delta" &&
-          (!event.stream || event.stream === "output") &&
-          event.text
-        ) {
-          const visibleUpdate = visibleTextAccumulator.consume(event.text);
-          if (visibleUpdate) {
-            attemptExecutionRuntime.emitAcpAssistantDelta({
-              runId: params.runId,
-              text: visibleUpdate.text,
-              delta: visibleUpdate.delta,
-            });
-          }
+          return;
         }
-        // Diagnostics/transcript facts are recorded even if channel presentation fails.
-        await projector?.onEvent(event);
+        if (
+          event.type !== "text_delta" ||
+          (event.stream && event.stream !== "output") ||
+          !event.text
+        ) {
+          return;
+        }
+        const visibleUpdate = visibleTextAccumulator.consume(event.text);
+        if (visibleUpdate) {
+          attemptExecutionRuntime.emitAcpAssistantDelta({
+            runId: params.runId,
+            text: visibleUpdate.text,
+            delta: visibleUpdate.delta,
+          });
+        }
       },
     });
-    await projector?.flush(true);
     if (isAgentRunRestartAbortReason(params.opts.abortSignal?.reason)) {
       throw params.opts.abortSignal?.reason;
     }
   } catch (error) {
-    await projector?.flush(true).catch((flushError: unknown) => {
-      log.warn(`ACP presentation flush failed: ${formatErrorMessage(flushError)}`);
-    });
     const { toAcpRuntimeError } = await loadAcpRuntimeErrorsRuntime();
     const acpError = toAcpRuntimeError({
       error,
@@ -410,14 +353,6 @@ export async function runAcpAgentCommand(params: {
     sessionEntry,
     result,
     payloads: result.payloads,
-    successfulTerminal:
-      classifyAgentRunTerminalOutcome(
-        buildAgentRunTerminalOutcomeFromLifecycleEvent({
-          phase: "end",
-          data: { status: resultStatus, stopReason },
-          abortSignal: params.opts.abortSignal,
-        }),
-      ) === "success",
     assertDeliveryCurrent: () =>
       assertAgentRunLifecycleGenerationCurrent(params.lifecycleGeneration),
   });

@@ -21,6 +21,7 @@ import {
   WRITE_SCOPE,
 } from "./method-scopes.js";
 import type { GatewayMethodRegistry } from "./methods/registry.js";
+import { createRecoveryTypingManager } from "./recovery-typing.js";
 import { dispatchGatewayRequestInProcess } from "./server-in-process-dispatch.js";
 import type {
   GatewayInstanceAgentDispatchOptions,
@@ -36,6 +37,10 @@ import {
   cancelSubagentCompletionToolHandoff,
   registerSubagentCompletionToolHandoff,
 } from "./subagent-completion-tool-handoff.js";
+
+const loadRecoveryTypingAdapter = createLazyRuntimeModule(
+  () => import("../channels/plugins/index.js"),
+);
 
 const loadOutboundMessageRuntime = createLazyRuntimeModule(
   () => import("../infra/outbound/message.js"),
@@ -61,6 +66,13 @@ export function createGatewayInstanceRuntime(
   const approvalSubscribers = new Set<GatewayApprovalEventSubscriber>();
   const routeCoordinator = createApprovalNativeRouteCoordinator();
   let closed = false;
+  const recoveryTyping = createRecoveryTypingManager({
+    isAvailable: () => !closed && options.isDispatchAvailable(),
+    getConfig: () => options.getContext().getRuntimeConfig(),
+    resolveAdapter: async (channel) =>
+      (await loadRecoveryTypingAdapter()).getLoadedChannelPlugin(channel)?.heartbeat,
+    onError: () => options.logError?.("recovery typing unavailable; final delivery continues"),
+  });
 
   const assertDispatchAvailable = (method: string) => {
     if (closed || !options.isDispatchAvailable()) {
@@ -151,6 +163,7 @@ export function createGatewayInstanceRuntime(
         payload,
         ...requestOptions,
       }),
+    startRecoveryTyping: (params) => recoveryTyping.start(params),
     dispatchAgent: async <T>(
       payload: AgentRunRequest,
       timeoutMs?: number,
@@ -342,6 +355,7 @@ export function createGatewayInstanceRuntime(
     isAvailable: () => !closed && options.isDispatchAvailable(),
     close: () => {
       closed = true;
+      recoveryTyping.close();
       releaseRecoveryRuntime();
       approvalSubscribers.clear();
       routeCoordinator.close();

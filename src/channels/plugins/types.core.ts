@@ -341,23 +341,7 @@ export type ChannelMentionAdapter = {
   }) => string;
 };
 
-type ChannelRecoveryReplyContext = {
-  cfg: OpenClawConfig;
-  agentId: string;
-  sessionKey: string;
-  sessionId: string;
-  to: string;
-  accountId?: string;
-  threadId?: string | number;
-  abortSignal?: AbortSignal;
-  /** Host-owned live fence; call after transport waits and immediately before every visible effect. */
-  assertCurrent: () => void;
-  /** Run the admitted continuation once and await presentation settlement before returning. */
-  dispatchReplyFromConfig: import("../../auto-reply/reply/dispatch-from-config.types.js").DispatchReplyFromConfig;
-};
-
 export type ChannelStreamingAdapter = {
-  dispatchRecoveryReply?: (params: ChannelRecoveryReplyContext) => Promise<void>;
   blockStreamingCoalesceDefaults?: {
     minChars: number;
     idleMs: number;
