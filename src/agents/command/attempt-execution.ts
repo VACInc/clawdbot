@@ -21,7 +21,6 @@ import {
 } from "../../auto-reply/reply/source-turn-id.js";
 import { messageToolOwnsVisibleReply } from "../../auto-reply/source-reply-delivery-mode.js";
 import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
-import { normalizeReasoningLevel } from "../../auto-reply/thinking.shared.js";
 import { resolveCollapsedSessionAuthPinSource } from "../../config/sessions/auth-profile-override-provenance.js";
 import {
   loadSessionEntry,
@@ -128,8 +127,6 @@ import {
   claudeCliSessionTranscriptHasContent,
   resolveFallbackRetryPrompt,
 } from "./attempt-execution.helpers.js";
-import { createCommandChannelReplyPresentation } from "./channel-reply-callbacks.js";
-import { withCommandChannelReplyEvents } from "./channel-reply-event-bridges.js";
 import { resolveAgentRunContext } from "./run-context.js";
 import {
   consumeCliSessionForkInStore,
@@ -1056,214 +1053,190 @@ export function runAgentAttempt(params: {
                   },
                 }
               : undefined;
-          return await withCommandChannelReplyEvents(
-            {
-              opts: params.opts,
-              cfg: params.cfg,
-              sessionKey: params.sessionKey,
-              storePath: params.storePath,
-              runId: params.runId,
-              provider: cliExecutionProvider,
-              model: params.modelOverride,
-              thinkLevel: params.resolvedThinkLevel,
-              workspaceDir: params.workspaceDir,
-              conversationContext: params.body,
-              resolvedVerboseLevel: params.resolvedVerboseLevel ?? "off",
-            },
-            (channelPresentation) =>
-              runCliAgent({
-                emitCommentaryText: channelPresentation?.emitCommentaryText,
-                preparedRunAdmission: params.preparedRunAdmission,
-                diagnosticOwner,
-                sessionId: params.sessionId,
-                sessionKey: params.sessionKey,
-                sessionTarget: params.sessionTarget,
-                sessionEntry: params.sessionEntry,
-                chatType: params.sessionEntry?.chatType,
-                contextWindow: params.sessionEntry?.contextWindow,
-                agentId: params.sessionAgentId,
-                trigger: "user",
-                sessionFile: params.sessionFile,
-                storePath: params.storePath,
-                persistAssistantTranscript:
-                  params.storePath !== undefined && params.sessionStore !== undefined,
-                workspaceDir: params.workspaceDir,
-                cwd: params.cwd,
-                config: params.cfg,
-                prompt: cliModelPrompt,
-                transcriptPrompt: cliPersistencePrompt,
-                modelProvider: params.providerOverride,
-                modelHasVision: params.modelHasVision,
-                provider: cliExecutionProvider,
-                model: params.modelOverride,
-                modelRoutingProvenance: params.modelRoutingProvenance,
-                thinkLevel: params.resolvedThinkLevel,
-                timeoutMs: params.timeoutMs,
-                runTimeoutOverrideMs: params.runTimeoutOverrideMs,
-                runId: params.runId,
-                lifecycleGeneration: params.lifecycleGeneration,
-                abortSignal: params.deferredLifecycle?.signal ?? params.opts.abortSignal,
-                onExecutionStarted: channelPresentation
-                  ? () => {
-                      params.opts.onExecutionStarted?.();
-                      channelPresentation.onExecutionStarted?.();
+          return await runCliAgent({
+            preparedRunAdmission: params.preparedRunAdmission,
+            diagnosticOwner,
+            sessionId: params.sessionId,
+            sessionKey: params.sessionKey,
+            sessionTarget: params.sessionTarget,
+            sessionEntry: params.sessionEntry,
+            chatType: params.sessionEntry?.chatType,
+            contextWindow: params.sessionEntry?.contextWindow,
+            agentId: params.sessionAgentId,
+            trigger: "user",
+            sessionFile: params.sessionFile,
+            storePath: params.storePath,
+            persistAssistantTranscript:
+              params.storePath !== undefined && params.sessionStore !== undefined,
+            workspaceDir: params.workspaceDir,
+            cwd: params.cwd,
+            config: params.cfg,
+            prompt: cliModelPrompt,
+            transcriptPrompt: cliPersistencePrompt,
+            modelProvider: params.providerOverride,
+            modelHasVision: params.modelHasVision,
+            provider: cliExecutionProvider,
+            model: params.modelOverride,
+            modelRoutingProvenance: params.modelRoutingProvenance,
+            thinkLevel: params.resolvedThinkLevel,
+            timeoutMs: params.timeoutMs,
+            runTimeoutOverrideMs: params.runTimeoutOverrideMs,
+            runId: params.runId,
+            lifecycleGeneration: params.lifecycleGeneration,
+            abortSignal: params.deferredLifecycle?.signal ?? params.opts.abortSignal,
+            onExecutionStarted: params.opts.onExecutionStarted,
+            onExecutionPhase: onRuntimeActivity,
+            lane: params.opts.lane,
+            extraSystemPrompt: params.opts.extraSystemPrompt,
+            inputProvenance: params.opts.inputProvenance,
+            skillLibraryAuthoring: params.opts.skillLibraryAuthoring,
+            cronCreatorCallerOrigin: params.opts.cronCreatorAuthorityCapability?.callerOrigin,
+            sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
+            requireExplicitMessageTarget:
+              params.opts.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
+            cliSessionBindingFacts: params.opts.cliSessionBindingFacts,
+            cliSessionId: nextCliSessionId,
+            cliSessionBinding:
+              nextCliSessionId === activeCliSessionBinding?.sessionId
+                ? activeCliSessionBinding
+                : undefined,
+            forkCliSessionOnResume,
+            ...(forkStoreParams
+              ? {
+                  claimCliSessionFork: async () => {
+                    const claimed = await consumeCliSessionForkInStore(forkStoreParams);
+                    if (claimed) {
+                      params.sessionEntry = claimed;
                     }
-                  : params.opts.onExecutionStarted,
-                onExecutionPhase: onRuntimeActivity,
-                lane: params.opts.lane,
-                extraSystemPrompt: params.opts.extraSystemPrompt,
+                    return Boolean(claimed);
+                  },
+                  restoreCliSessionFork: async () => {
+                    const restored = await restoreCliSessionForkInStore(forkStoreParams);
+                    if (restored) {
+                      params.sessionEntry = restored;
+                    }
+                  },
+                  persistCliSessionForkSuccessor: async (successorCliSessionId: string) => {
+                    const persisted = await persistCliSessionForkSuccessorInStore({
+                      ...forkStoreParams,
+                      successorCliSessionId,
+                    });
+                    if (!persisted) {
+                      throw new Error("CLI session fork successor could not be persisted");
+                    }
+                    params.sessionEntry = persisted;
+                  },
+                }
+              : {}),
+            authProfileId,
+            bootstrapPromptWarningSignaturesSeen,
+            bootstrapPromptWarningSignature,
+            // Image discovery must use the original turn, before retry/history decoration.
+            imagePrompt: params.body,
+            // Fallback prompts repeat the current task, so prompt-local images must
+            // accompany every CLI process. Native dedupe requires a runtime receipt.
+            images: params.opts.images,
+            imageOrder: params.opts.imageOrder,
+            media: params.opts.media,
+            skillsSnapshot: params.skillsSnapshot,
+            ...toolContext,
+            streamParams: params.opts.streamParams,
+            // Completion relays can carry the trusted source only in their
+            // delivery target; the restricted CLI grant must retain that owner.
+            currentChannelId:
+              params.runContext.currentChannelId ??
+              (completionNeedsMessageDelivery
+                ? (params.opts.replyTo ?? params.opts.to)
+                : undefined),
+            approvalReviewerDeviceId: params.opts.approvalReviewerDeviceId,
+            bashElevated: params.opts.bashElevated,
+            toolsAllow: resolveCliRuntimeToolsAllow(
+              runtimeToolsAllow,
+              params.opts.toolsAllowIsDefault,
+            ),
+            // This loop is the command-origin sibling of the auto-reply fallback
+            // candidate, so its CLI grant needs the same delegation gate; the
+            // inputs match the tool state this invocation actually runs with.
+            ...buildCliMcpDelegationCapabilityBinding(
+              resolveDelegationCapability({
+                fallbackActive: params.isFallbackRetry,
                 inputProvenance: params.opts.inputProvenance,
-                skillLibraryAuthoring: params.opts.skillLibraryAuthoring,
-                cronCreatorCallerOrigin: params.opts.cronCreatorAuthorityCapability?.callerOrigin,
-                sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
-                requireExplicitMessageTarget:
-                  params.opts.requireExplicitMessageTarget ??
-                  isSubagentSessionKey(params.sessionKey),
-                cliSessionBindingFacts: params.opts.cliSessionBindingFacts,
-                cliSessionId: nextCliSessionId,
-                cliSessionBinding:
-                  nextCliSessionId === activeCliSessionBinding?.sessionId
-                    ? activeCliSessionBinding
-                    : undefined,
-                forkCliSessionOnResume,
-                ...(forkStoreParams
-                  ? {
-                      claimCliSessionFork: async () => {
-                        const claimed = await consumeCliSessionForkInStore(forkStoreParams);
-                        if (claimed) {
-                          params.sessionEntry = claimed;
-                        }
-                        return Boolean(claimed);
-                      },
-                      restoreCliSessionFork: async () => {
-                        const restored = await restoreCliSessionForkInStore(forkStoreParams);
-                        if (restored) {
-                          params.sessionEntry = restored;
-                        }
-                      },
-                      persistCliSessionForkSuccessor: async (successorCliSessionId: string) => {
-                        const persisted = await persistCliSessionForkSuccessorInStore({
-                          ...forkStoreParams,
-                          successorCliSessionId,
-                        });
-                        if (!persisted) {
-                          throw new Error("CLI session fork successor could not be persisted");
-                        }
-                        params.sessionEntry = persisted;
-                      },
-                    }
-                  : {}),
-                authProfileId,
-                bootstrapPromptWarningSignaturesSeen,
-                bootstrapPromptWarningSignature,
-                // Image discovery must use the original turn, before retry/history decoration.
-                imagePrompt: params.body,
-                // Fallback prompts repeat the current task, so prompt-local images must
-                // accompany every CLI process. Native dedupe requires a runtime receipt.
-                images: params.opts.images,
-                imageOrder: params.opts.imageOrder,
-                media: params.opts.media,
-                skillsSnapshot: params.skillsSnapshot,
-                ...toolContext,
-                streamParams: params.opts.streamParams,
-                // Completion relays can carry the trusted source only in their
-                // delivery target; the restricted CLI grant must retain that owner.
-                currentChannelId:
-                  params.runContext.currentChannelId ??
-                  (completionNeedsMessageDelivery
-                    ? (params.opts.replyTo ?? params.opts.to)
-                    : undefined),
-                approvalReviewerDeviceId: params.opts.approvalReviewerDeviceId,
-                bashElevated: params.opts.bashElevated,
-                toolsAllow: resolveCliRuntimeToolsAllow(
-                  runtimeToolsAllow,
-                  params.opts.toolsAllowIsDefault,
-                ),
-                // This loop is the command-origin sibling of the auto-reply fallback
-                // candidate, so its CLI grant needs the same delegation gate; the
-                // inputs match the tool state this invocation actually runs with.
-                ...buildCliMcpDelegationCapabilityBinding(
-                  resolveDelegationCapability({
-                    fallbackActive: params.isFallbackRetry,
-                    inputProvenance: params.opts.inputProvenance,
-                    disableTools,
-                    toolsAllow: runtimeToolsAllow,
-                  }),
-                ),
-                cleanupBundleMcpOnRunEnd: params.opts.cleanupBundleMcpOnRunEnd,
-                cleanupCliLiveSessionOnRunEnd: params.opts.cleanupCliLiveSessionOnRunEnd,
-                oneShotCliRun: params.opts.oneShotCliRun,
-                userTurnTranscriptRecorder: params.userTurnTranscriptRecorder,
-                contextEngineLogicalTurnLease: params.contextEngineLogicalTurnLease,
-                onContextEngineTurnCandidate: params.onContextEngineTurnCandidate,
-                suppressNextUserMessagePersistence:
-                  params.suppressPromptPersistenceOnRetry === true,
                 disableTools,
-                allowEmptyAssistantReplyAsSilent: isSubagentLane || isSubagentAnnounceHandoff,
-                ...(forkStoreParams && !forkCliSessionOnResume
-                  ? {
-                      onBeforeForkedCliSessionRetry: async (retry) => {
-                        if (
-                          hasNewGeneratedMediaTaskForSessionKey(
-                            params.sessionKey,
-                            mediaTaskIdsBefore,
-                          ) ||
-                          retry.sessionId !== activeCliSessionBinding?.sessionId
-                        ) {
-                          return false;
-                        }
-
-                        log.warn(
-                          `CLI session stalled, arming forked recovery: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${forkStoreParams.sessionKey}`,
-                        );
-
-                        const armed = await restoreCliSessionForkInStore(forkStoreParams);
-                        if (armed) {
-                          params.sessionEntry = armed;
-                        }
-                        return Boolean(armed);
-                      },
-                    }
-                  : {}),
-                ...(mutableCliSessionStore
-                  ? {
-                      onBeforeFreshCliSessionRetry: async (retry) => {
-                        if (
-                          hasNewGeneratedMediaTaskForSessionKey(
-                            params.sessionKey,
-                            mediaTaskIdsBefore,
-                          ) ||
-                          getCliSessionBinding(
-                            loadSessionEntry({
-                              sessionKey: mutableCliSessionStore.sessionKey,
-                              storePath: mutableCliSessionStore.storePath,
-                              readConsistency: "latest",
-                            }),
-                            cliExecutionProvider,
-                          )?.sessionId !== retry.sessionId
-                        ) {
-                          return false;
-                        }
-
-                        log.warn(
-                          `CLI session failed, clearing before fresh retry: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${mutableCliSessionStore.sessionKey} reason=${sanitizeForLog(retry.reason)}`,
-                        );
-
-                        const cleared = await clearCliSessionInStore({
-                          provider: cliExecutionProvider,
-                          expectedCliSessionId: retry.sessionId,
-                          ...mutableCliSessionStore,
-                        });
-                        if (!cleared) {
-                          return false;
-                        }
-                        params.sessionEntry = cleared;
-                        return true;
-                      },
-                    }
-                  : {}),
+                toolsAllow: runtimeToolsAllow,
               }),
-          );
+            ),
+            cleanupBundleMcpOnRunEnd: params.opts.cleanupBundleMcpOnRunEnd,
+            cleanupCliLiveSessionOnRunEnd: params.opts.cleanupCliLiveSessionOnRunEnd,
+            oneShotCliRun: params.opts.oneShotCliRun,
+            userTurnTranscriptRecorder: params.userTurnTranscriptRecorder,
+            contextEngineLogicalTurnLease: params.contextEngineLogicalTurnLease,
+            onContextEngineTurnCandidate: params.onContextEngineTurnCandidate,
+            suppressNextUserMessagePersistence: params.suppressPromptPersistenceOnRetry === true,
+            disableTools,
+            allowEmptyAssistantReplyAsSilent: isSubagentLane || isSubagentAnnounceHandoff,
+            ...(forkStoreParams && !forkCliSessionOnResume
+              ? {
+                  onBeforeForkedCliSessionRetry: async (retry) => {
+                    if (
+                      hasNewGeneratedMediaTaskForSessionKey(
+                        params.sessionKey,
+                        mediaTaskIdsBefore,
+                      ) ||
+                      retry.sessionId !== activeCliSessionBinding?.sessionId
+                    ) {
+                      return false;
+                    }
+
+                    log.warn(
+                      `CLI session stalled, arming forked recovery: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${forkStoreParams.sessionKey}`,
+                    );
+
+                    const armed = await restoreCliSessionForkInStore(forkStoreParams);
+                    if (armed) {
+                      params.sessionEntry = armed;
+                    }
+                    return Boolean(armed);
+                  },
+                }
+              : {}),
+            ...(mutableCliSessionStore
+              ? {
+                  onBeforeFreshCliSessionRetry: async (retry) => {
+                    if (
+                      hasNewGeneratedMediaTaskForSessionKey(
+                        params.sessionKey,
+                        mediaTaskIdsBefore,
+                      ) ||
+                      getCliSessionBinding(
+                        loadSessionEntry({
+                          sessionKey: mutableCliSessionStore.sessionKey,
+                          storePath: mutableCliSessionStore.storePath,
+                          readConsistency: "latest",
+                        }),
+                        cliExecutionProvider,
+                      )?.sessionId !== retry.sessionId
+                    ) {
+                      return false;
+                    }
+
+                    log.warn(
+                      `CLI session failed, clearing before fresh retry: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${mutableCliSessionStore.sessionKey} reason=${sanitizeForLog(retry.reason)}`,
+                    );
+
+                    const cleared = await clearCliSessionInStore({
+                      provider: cliExecutionProvider,
+                      expectedCliSessionId: retry.sessionId,
+                      ...mutableCliSessionStore,
+                    });
+                    if (!cleared) {
+                      return false;
+                    }
+                    params.sessionEntry = cleared;
+                    return true;
+                  },
+                }
+              : {}),
+          });
         };
         const activeCliSessionBinding = await resolveReusableCliSessionBinding();
         let result: EmbeddedAgentRunResult;
@@ -1472,41 +1445,7 @@ export function runAgentAttempt(params: {
     embeddedRunParams,
     readChannelSourceTurnSameThreadRequired(params.runContext),
   );
-  if (!params.opts.channelReply?.options) {
-    return runEmbeddedAgent(embeddedRunParams);
-  }
-  // Keep synchronous preparation failures and ordinary commands on their original path.
-  return createCommandChannelReplyPresentation({
-    workspaceDir: params.workspaceDir,
-    conversationContext: params.body,
-    opts: params.opts,
-    cfg: params.cfg,
-    sessionKey: params.sessionKey,
-    storePath: params.storePath,
-    runId: params.runId,
-    provider: embeddedAgentProvider,
-    model: params.modelOverride,
-    thinkLevel: params.resolvedThinkLevel,
-    reasoningLevel: normalizeReasoningLevel(params.sessionEntry?.reasoningLevel),
-    resolvedVerboseLevel: params.resolvedVerboseLevel ?? "off",
-  }).then(async (presentation) => {
-    if (!presentation) {
-      return runEmbeddedAgent(embeddedRunParams);
-    }
-    const { callbacks } = presentation;
-    return await runEmbeddedAgent({
-      ...embeddedRunParams,
-      ...callbacks,
-      onAgentEvent: async (event) => {
-        await embeddedRunParams.onAgentEvent?.(event);
-        await callbacks.onAgentEvent?.(event);
-      },
-      onExecutionStarted: (info) => {
-        embeddedRunParams.onExecutionStarted?.(info);
-        callbacks.onExecutionStarted?.(info);
-      },
-    });
-  });
+  return runEmbeddedAgent(embeddedRunParams);
 }
 
 export function buildAcpResult(params: {
