@@ -77,6 +77,8 @@ export function isRestartRecoveryDeliveryCurrent(params: RestartRecoveryDelivery
     current.status === "running" &&
     current.abortedLastRun !== true &&
     current.restartRecoveryDeliveryRunId === params.recoveryRunId &&
+    // A retained route is not permission for an automatic resumption notice.
+    current.restartRecoverySourceReplyDeliveryMode !== "message_tool_only" &&
     deliveryContextKey(
       resolveRestartRecoveryDeliveryContext({
         cfg: params.cfg,

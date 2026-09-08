@@ -2078,6 +2078,33 @@ describe("main-session-restart-recovery", () => {
     }
   });
 
+  it("resumes a channel-owned message-tool-only claim without an automatic notice", async () => {
+    const { sessionsDir } = await makeMainSessionFixture({
+      sessionKey: "agent:main:telegram:group:-100123:topic:99",
+      restartRecoveryDeliveryRunId: "channel-tool-only-run",
+      restartRecoveryDeliverySourceRunId: "channel-tool-only-run",
+      restartRecoverySourceIngress: "channel",
+      restartRecoverySourceReplyDeliveryMode: "message_tool_only",
+      restartRecoveryDeliveryContext: {
+        channel: "telegram",
+        to: "telegram:-100123",
+        accountId: "work",
+        threadId: 99,
+      },
+    });
+    await writeCompletedToolTranscript(sessionsDir);
+    await expectRecovery({ started: 1, settled: 0, failed: 0, skipped: 0 });
+    expect(gatewayParams()).toMatchObject({
+      channel: "telegram",
+      to: "telegram:-100123",
+      accountId: "work",
+      threadId: "99",
+      deliver: false,
+      sourceReplyDeliveryMode: "message_tool_only",
+    });
+    expect(sendRecoveryNotice).not.toHaveBeenCalled();
+  });
+
   it("reuses a transcript-only claim without inferring historical session routes", async () => {
     const { sessionsDir, storePath } = await makeMainSessionFixture({
       sessionKey: "agent:main:discord:direct:123",
