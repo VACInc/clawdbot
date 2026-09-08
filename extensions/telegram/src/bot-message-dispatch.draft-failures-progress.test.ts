@@ -103,14 +103,6 @@ describeTelegramDispatch("dispatchTelegramMessage draft-failures-progress", () =
             SessionKey: "agent:test:telegram:group:-100123",
             ChatType: "group",
           },
-          primaryCtx: {
-            ...createContext().primaryCtx,
-            message: {
-              chat: { id: -100123, type: "supergroup", title: "Test group" },
-              date: 0,
-              message_id: 456,
-            },
-          },
           msg: {
             chat: { id: -100123, type: "supergroup", title: "Test group" },
             date: 0,

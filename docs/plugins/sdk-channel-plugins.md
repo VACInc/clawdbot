@@ -102,6 +102,40 @@ update occurred. Existing synchronous and asynchronous callbacks that return `vo
 backward-compatible and are treated as visible; new acceptance-aware implementations should use
 an explicit boolean.
 
+### Restart recovery presentation
+
+A channel can implement the optional `streaming.dispatchRecoveryReply` method
+to present a host-admitted restart continuation through its ordinary reply
+pipeline. The host calls it only for an eligible delivering recovery. Plugins
+that omit it retain the existing final-delivery path; existing plugins do not
+need a compatibility shim.
+
+The method receives a context with these fields:
+
+| Field                                | Contract                                                                                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cfg`                                | Runtime configuration for this presentation.                                                                                                                                   |
+| `agentId`, `sessionKey`, `sessionId` | The admitted agent and existing session; do not create a new inbound turn.                                                                                                     |
+| `to`, `accountId`, `threadId`        | The retained destination, optional account, and optional thread. Preserve channel-specific topic distinctions.                                                                 |
+| `abortSignal`                        | Optional cancellation signal. Pass it to transport work and stop progress producers when it aborts.                                                                            |
+| `assertCurrent()`                    | Host-owned synchronous validity check. Recheck after transport waits and immediately before each visible send or edit.                                                         |
+| `dispatchReplyFromConfig(params)`    | Invoke exactly once with the ordinary dispatcher and presentation callbacks, then await its settlement. The host supplies the admitted execution and normalized final replies. |
+
+Reuse presentation without calling inbound ingest, recording another user
+message, or manufacturing sender or approval authority. Context fields describe
+the destination; they are not a substitute for `assertCurrent`. A transport
+queue must recheck the fence after its wait, not only when work is enqueued.
+
+Do not return while owned previews, queued delivery, or typing cleanup remain
+unsettled. Propagate presentation failures after cleanup. The host retains
+command ownership until delivery and presenter cleanup finish, and rejects
+retained dispatch callbacks after the presenter exits. A presenter that returns
+without invoking the supplied dispatcher is an error, not successful recovery.
+
+The host preserves source-delivery policy and retained output constraints. Some
+recoveries are intentionally final-only, including media-only repair; a plugin
+must not invent progress or replay completed actions to fill the gap.
+
 ### Quiet progress presentation
 
 Native progress renderers must retain approval and failure lines when ordinary

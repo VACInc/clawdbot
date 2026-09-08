@@ -1,19 +1,29 @@
-import {
-  createAgentReplyEventBridges,
-  createCliToolSummaryTracker,
-} from "../../auto-reply/reply/agent-runner-cli-dispatch.js";
-import { createCommandChannelReplyCallbacks } from "./channel-reply-callbacks.js";
+import type { RunCliAgentParams } from "../cli-runner/types.js";
+import { createCommandChannelReplyPresentation } from "./channel-reply-callbacks.js";
 
-/** CLI and ACP publish the same event stream consumed by ordinary channel turns. */
+/** CLI events use the ordinary channel bridges; ACP uses its native projector instead. */
 export async function withCommandChannelReplyEvents<T>(
-  params: Parameters<typeof createCommandChannelReplyCallbacks>[0],
-  run: () => Promise<T>,
+  params: Parameters<typeof createCommandChannelReplyPresentation>[0],
+  run: (
+    presentation?: Pick<RunCliAgentParams, "emitCommentaryText" | "onExecutionStarted">,
+  ) => Promise<T>,
 ): Promise<T> {
   const options = params.opts.channelReply?.options;
   if (!options) {
     return run();
   }
-  const callbacks = createCommandChannelReplyCallbacks(params);
+  const [
+    { createAgentReplyEventBridges, createCliToolSummaryTracker },
+    { createCliCommentaryHandler },
+  ] = await Promise.all([
+    import("../../auto-reply/reply/agent-runner-cli-dispatch.js"),
+    import("../../auto-reply/reply/agent-runner-cli-commentary.js"),
+  ]);
+  const presentation = await createCommandChannelReplyPresentation(params);
+  if (!presentation) {
+    return run();
+  }
+  const { callbacks } = presentation;
   const summary = createCliToolSummaryTracker({
     detailMode: callbacks.toolProgressDetail,
     commandDetailsVisible: params.resolvedVerboseLevel === "full",
@@ -22,6 +32,15 @@ export async function withCommandChannelReplyEvents<T>(
     deliver: async (payload) => {
       await callbacks.onToolResult?.(payload);
     },
+  });
+  const onCommentaryText = createCliCommentaryHandler({
+    options,
+    blockStreamingEnabled: presentation.blockStreamingEnabled,
+    onBlockReply: callbacks.onBlockReply
+      ? async (payload) => {
+          await callbacks.onBlockReply?.(payload);
+        }
+      : undefined,
   });
   const bridges = createAgentReplyEventBridges({
     runId: params.runId,
@@ -34,29 +53,28 @@ export async function withCommandChannelReplyEvents<T>(
       await options.onReasoningProgress?.(payload);
     },
     onToolEvent: async (payload) => {
-      await callbacks.onAgentEvent?.({ stream: "tool", data: payload });
-      await summary.noteToolEvent(payload);
+      // Result events often omit arguments. Retain the start event's classification.
+      const summaryPromise = summary.noteToolEvent(payload);
+      if (payload.phase === "result") {
+        const commandBearing = await summaryPromise;
+        await callbacks.onAgentEvent?.({ stream: "tool", data: { ...payload, commandBearing } });
+      } else {
+        await Promise.all([
+          summaryPromise,
+          callbacks.onAgentEvent?.({ stream: "tool", data: payload }),
+        ]);
+      }
     },
     onPlanUpdate: options.onPlanUpdate,
     onCompactionStart: options.onCompactionStart,
     onCompactionEnd: options.onCompactionEnd,
-    onCommentaryText:
-      options.progressPreambleEnabled || options.commentaryPayloadsEnabled
-        ? async (payload) => {
-            await options.onItemEvent?.({
-              kind: "message",
-              phase: "delta",
-              summary: payload.text,
-              itemId: payload.itemId,
-            });
-            if (options.commentaryPayloadsEnabled) {
-              await options.onBlockReply?.({ text: payload.text, isCommentary: true });
-            }
-          }
-        : undefined,
+    onCommentaryText,
   });
   try {
-    return await run();
+    return await run({
+      emitCommentaryText: Boolean(onCommentaryText),
+      onExecutionStarted: callbacks.onExecutionStarted,
+    });
   } finally {
     bridges.unsubscribe();
     await bridges.drain();

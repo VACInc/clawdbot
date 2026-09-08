@@ -560,6 +560,11 @@ async function agentCommandInternal(
       maintenanceRequest = finalized.maintenance;
       return finalized.deliveryResult;
     });
+  } catch (error) {
+    // Early execution failures have no final-delivery checkpoint. Their channel
+    // presenter must still settle before this command retires the recovery claim.
+    await opts.channelReply?.onError?.(error);
+    throw error;
   } finally {
     try {
       compactionSessionIdReporter.reportCommitted();

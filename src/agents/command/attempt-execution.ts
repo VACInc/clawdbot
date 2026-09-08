@@ -21,6 +21,7 @@ import {
 } from "../../auto-reply/reply/source-turn-id.js";
 import { messageToolOwnsVisibleReply } from "../../auto-reply/source-reply-delivery-mode.js";
 import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
+import { normalizeReasoningLevel } from "../../auto-reply/thinking.shared.js";
 import { resolveCollapsedSessionAuthPinSource } from "../../config/sessions/auth-profile-override-provenance.js";
 import {
   loadSessionEntry,
@@ -127,7 +128,7 @@ import {
   claudeCliSessionTranscriptHasContent,
   resolveFallbackRetryPrompt,
 } from "./attempt-execution.helpers.js";
-import { createCommandChannelReplyCallbacks } from "./channel-reply-callbacks.js";
+import { createCommandChannelReplyPresentation } from "./channel-reply-callbacks.js";
 import { withCommandChannelReplyEvents } from "./channel-reply-event-bridges.js";
 import { resolveAgentRunContext } from "./run-context.js";
 import {
@@ -1064,10 +1065,14 @@ export function runAgentAttempt(params: {
               runId: params.runId,
               provider: cliExecutionProvider,
               model: params.modelOverride,
+              thinkLevel: params.resolvedThinkLevel,
+              workspaceDir: params.workspaceDir,
+              conversationContext: params.body,
               resolvedVerboseLevel: params.resolvedVerboseLevel ?? "off",
             },
-            () =>
+            (channelPresentation) =>
               runCliAgent({
+                emitCommentaryText: channelPresentation?.emitCommentaryText,
                 preparedRunAdmission: params.preparedRunAdmission,
                 diagnosticOwner,
                 sessionId: params.sessionId,
@@ -1098,7 +1103,12 @@ export function runAgentAttempt(params: {
                 runId: params.runId,
                 lifecycleGeneration: params.lifecycleGeneration,
                 abortSignal: params.deferredLifecycle?.signal ?? params.opts.abortSignal,
-                onExecutionStarted: params.opts.onExecutionStarted,
+                onExecutionStarted: channelPresentation
+                  ? () => {
+                      params.opts.onExecutionStarted?.();
+                      channelPresentation.onExecutionStarted?.();
+                    }
+                  : params.opts.onExecutionStarted,
                 onExecutionPhase: onRuntimeActivity,
                 lane: params.opts.lane,
                 extraSystemPrompt: params.opts.extraSystemPrompt,
@@ -1328,18 +1338,6 @@ export function runAgentAttempt(params: {
   const embeddedPersistencePrompt = params.opts.gitCoauthorAttribution
     ? (continuationTranscriptBody ?? effectivePrompt)
     : continuationTranscriptBody;
-  const channelCallbacks = createCommandChannelReplyCallbacks({
-    opts: params.opts,
-    cfg: params.cfg,
-    sessionKey: params.sessionKey,
-    storePath: params.storePath,
-    runId: params.runId,
-    provider: embeddedAgentProvider,
-    model: params.modelOverride,
-    thinkLevel: params.resolvedThinkLevel,
-    reasoningLevel: params.sessionEntry?.reasoningLevel,
-    resolvedVerboseLevel: params.resolvedVerboseLevel ?? "off",
-  });
   const embeddedRunParams: RunEmbeddedAgentInternalParams = {
     preparedRunAdmission: params.preparedRunAdmission,
     sessionId: params.sessionId,
@@ -1435,11 +1433,7 @@ export function runAgentAttempt(params: {
     promptMode: params.opts.promptMode,
     disableTools,
     allowEmptyAssistantReplyAsSilent: isSubagentLane || isSubagentAnnounceHandoff,
-    ...channelCallbacks,
-    onAgentEvent: async (event) => {
-      await params.onAgentEvent?.(event);
-      await channelCallbacks.onAgentEvent?.(event);
-    },
+    onAgentEvent: params.onAgentEvent,
     onExecutionPhase: onRuntimeActivity,
     deferTerminalLifecycle: params.deferTerminalLifecycle,
     onDeferredLifecycleOwner: params.deferredLifecycle?.adopt,
@@ -1478,7 +1472,41 @@ export function runAgentAttempt(params: {
     embeddedRunParams,
     readChannelSourceTurnSameThreadRequired(params.runContext),
   );
-  return runEmbeddedAgent(embeddedRunParams);
+  if (!params.opts.channelReply?.options) {
+    return runEmbeddedAgent(embeddedRunParams);
+  }
+  // Keep synchronous preparation failures and ordinary commands on their original path.
+  return createCommandChannelReplyPresentation({
+    workspaceDir: params.workspaceDir,
+    conversationContext: params.body,
+    opts: params.opts,
+    cfg: params.cfg,
+    sessionKey: params.sessionKey,
+    storePath: params.storePath,
+    runId: params.runId,
+    provider: embeddedAgentProvider,
+    model: params.modelOverride,
+    thinkLevel: params.resolvedThinkLevel,
+    reasoningLevel: normalizeReasoningLevel(params.sessionEntry?.reasoningLevel),
+    resolvedVerboseLevel: params.resolvedVerboseLevel ?? "off",
+  }).then(async (presentation) => {
+    if (!presentation) {
+      return runEmbeddedAgent(embeddedRunParams);
+    }
+    const { callbacks } = presentation;
+    return await runEmbeddedAgent({
+      ...embeddedRunParams,
+      ...callbacks,
+      onAgentEvent: async (event) => {
+        await embeddedRunParams.onAgentEvent?.(event);
+        await callbacks.onAgentEvent?.(event);
+      },
+      onExecutionStarted: (info) => {
+        embeddedRunParams.onExecutionStarted?.(info);
+        callbacks.onExecutionStarted?.(info);
+      },
+    });
+  });
 }
 
 export function buildAcpResult(params: {

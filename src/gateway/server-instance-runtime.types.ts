@@ -48,7 +48,10 @@ export type GatewayRecoveryRuntime = {
     threadId?: string | number;
     text: string;
     idempotencyKey: string;
-    /** Revalidated after lazy runtime loading and immediately before outbound dispatch. */
+    /**
+     * Process-local fence, revalidated after loading and before outbound dispatch.
+     * Guarded notices are transient: never persisted or retried by queue recovery.
+     */
     isCurrent?: () => boolean;
   }) => Promise<{
     /** True when delivery produced zero platform results (policy/channel suppression). */

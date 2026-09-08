@@ -125,7 +125,8 @@ export type TelegramReplyContext = Omit<
   TelegramMessageContext,
   "turn" | "primaryCtx" | "route" | "sendChatActionHandler"
 > & {
-  turn: Pick<TelegramMessageContext["turn"], "record">;
+  /** Absent for an admitted continuation: there is no inbound message to record. */
+  turn?: Pick<TelegramMessageContext["turn"], "record">;
   sendChatActionHandler: Pick<TelegramMessageContext["sendChatActionHandler"], "sendChatAction">;
   primaryCtx: Pick<TelegramMessageContext["primaryCtx"], "me">;
   route: Pick<TelegramMessageContext["route"], "agentId" | "accountId" | "sessionKey">;

@@ -90,7 +90,7 @@ export function createBlockReplyDeliveryHandler(params: {
   normalizeStreamingText: (payload: ReplyPayload) => { text?: string; skip: boolean };
   applyReplyToMode: (payload: ReplyPayload) => ReplyPayload;
   normalizeMediaPaths?: (payload: ReplyPayload) => Promise<ReplyPayload>;
-  typingSignals: TypingSignaler;
+  typingSignals: Pick<TypingSignaler, "signalTextDelta">;
   reasoningPayloadsEnabled?: boolean;
   commentaryPayloadsEnabled?: boolean;
   blockStreamingEnabled: boolean;

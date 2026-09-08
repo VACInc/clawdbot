@@ -51,6 +51,22 @@ import { telegramInboundEventDelivery } from "./inbound-event-delivery.js";
 
 const TELEGRAM_MAX_CONSECUTIVE_TYPING_FAILURES = 5;
 
+type RecoveryDispatchInfo = Parameters<
+  Parameters<typeof dispatchReplyWithBufferedBlockDispatcher>[0]["dispatcherOptions"]["deliver"]
+>[1];
+
+function assertRecoveryDeliveryGuards(
+  info: RecoveryDispatchInfo,
+): asserts info is RecoveryDispatchInfo &
+  Required<Pick<RecoveryDispatchInfo, "assertPlatformSendAuthorized" | "onPlatformSendDispatch">> {
+  if (
+    typeof info.assertPlatformSendAuthorized !== "function" ||
+    typeof info.onPlatformSendDispatch !== "function"
+  ) {
+    throw new Error("Telegram recovery delivery requires host-owned send guards");
+  }
+}
+
 export async function runTelegramDispatchTurn(turn: Turn) {
   const { context } = turn;
   const isRoomEvent = context.ctxPayload.InboundEventKind === "room_event";
@@ -114,10 +130,7 @@ export async function runTelegramDispatchTurn(turn: Turn) {
         sessionKey: context.route.sessionKey,
       },
       ctxPayload: context.ctxPayload,
-      record:
-        context.ctxPayload.InternalTurnSource === "restart-recovery"
-          ? undefined
-          : context.turn.record,
+      record: context.turn?.record,
       dispatchReplyFromConfig: turn.opts.dispatchReplyFromConfig,
       delivery: {
         deliverWithProviderMessageSending: async (payload, info) =>
@@ -296,8 +309,8 @@ export async function runTelegramDispatchTurn(turn: Turn) {
         onModelSelected,
       },
     });
-    const recoveryPlan =
-      context.ctxPayload.InternalTurnSource === "restart-recovery" ? resolveTurn() : undefined;
+    // Continuations reuse presentation only; no fabricated inbound record or hooks.
+    const recoveryPlan = context.turn ? undefined : resolveTurn();
     const turnResult = recoveryPlan
       ? {
           dispatched: true,
@@ -307,7 +320,10 @@ export async function runTelegramDispatchTurn(turn: Turn) {
             dispatchReplyFromConfig: recoveryPlan.dispatchReplyFromConfig,
             dispatcherOptions: {
               ...recoveryPlan.dispatcherOptions,
-              deliver: recoveryPlan.delivery.deliverWithProviderMessageSending,
+              deliver: (payload, info) => {
+                assertRecoveryDeliveryGuards(info);
+                return recoveryPlan.delivery.deliverWithProviderMessageSending(payload, info);
+              },
               onError: recoveryPlan.delivery.onError,
             },
             replyOptions: recoveryPlan.replyOptions,

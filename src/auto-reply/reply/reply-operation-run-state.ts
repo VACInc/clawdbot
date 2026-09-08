@@ -29,6 +29,8 @@ export type ReplyPreRunRejectionCode =
   | "session-directive-rejected";
 
 export type ReplyOperationRunState = {
+  /** Host-admitted continuation, not a new inbound message or source of authority. */
+  restartRecovery?: true;
   heartbeat?: {
     prepareReply: (
       replyResult: ReplyPayload | ReplyPayload[] | undefined,

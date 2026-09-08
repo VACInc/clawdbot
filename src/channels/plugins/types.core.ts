@@ -341,7 +341,7 @@ export type ChannelMentionAdapter = {
   }) => string;
 };
 
-export type ChannelRecoveryReplyContext = {
+type ChannelRecoveryReplyContext = {
   cfg: OpenClawConfig;
   agentId: string;
   sessionKey: string;
@@ -350,7 +350,9 @@ export type ChannelRecoveryReplyContext = {
   accountId?: string;
   threadId?: string | number;
   abortSignal?: AbortSignal;
-  /** Run the admitted continuation through the channel's ordinary reply presentation. */
+  /** Host-owned live fence; call after transport waits and immediately before every visible effect. */
+  assertCurrent: () => void;
+  /** Run the admitted continuation once and await presentation settlement before returning. */
   dispatchReplyFromConfig: import("../../auto-reply/reply/dispatch-from-config.types.js").DispatchReplyFromConfig;
 };
 

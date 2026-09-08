@@ -3,7 +3,43 @@ import {
   buildCurrentRunRestartRecoveryClaim,
   buildRestartRecoveryTerminalDeliveryEvidence,
   constrainRestartRecoveryDeliveryPayloads,
+  resolveCommandRecoveryOptions,
 } from "./agent-command-restart-recovery.js";
+
+describe("resolveCommandRecoveryOptions", () => {
+  it.each([{ media: [] }, { media: ["/tmp/retained.png"] }])(
+    "keeps constrained recovery final-only for media $media",
+    ({ media }) => {
+      const deliverFinal = async () => ({
+        requested: true as const,
+        attempted: true,
+        status: "sent" as const,
+        succeeded: true as const,
+      });
+      const restored = resolveCommandRecoveryOptions({
+        runId: "recovered",
+        opts: {
+          message: "continue",
+          channelReply: { options: { onPartialReply: async () => true }, deliverFinal },
+        },
+        sessionEntry: {
+          sessionId: "session",
+          updatedAt: 1,
+          restartRecoveryDeliveryRunId: "recovered",
+          restartRecoveryDeliveryMediaUrls: media,
+          restartRecoverySuppressTextDelivery: true,
+          restartRecoverySourceReplyDeliveryMode: "automatic",
+          restartRecoveryDisableMessageTool: true,
+          restartRecoveryForceSafeTools: true,
+        },
+      });
+      expect(restored.channelReply?.options).toBeUndefined();
+      expect(restored.channelReply?.deliverFinal).toBe(deliverFinal);
+      expect(restored.internalDeliveryMediaUrls).toEqual(media);
+      expect(restored.internalDeliverySuppressText).toBe(true);
+    },
+  );
+});
 
 describe("buildCurrentRunRestartRecoveryClaim", () => {
   it("persists the complete generated-media policy, including an empty allowlist", () => {

@@ -171,14 +171,15 @@ export function resolveDispatchTelegramContext(params: {
   const recoveredFrom = params.context.isGroup
     ? buildTelegramGroupFrom(params.context.chatId, threadSpec)
     : params.context.ctxPayload.From;
+  const updateLastRoute = params.context.turn?.record.updateLastRoute;
   const recoveredUpdateLastRoute =
-    params.context.turn.record.updateLastRoute && threadSpec.id != null
+    updateLastRoute && threadSpec.id != null
       ? {
-          ...params.context.turn.record.updateLastRoute,
+          ...updateLastRoute,
           to: `telegram:${params.context.chatId}:topic:${threadSpec.id}`,
           threadId: String(threadSpec.id),
         }
-      : params.context.turn.record.updateLastRoute;
+      : updateLastRoute;
   const recoveredHistoryKey = params.context.isGroup
     ? buildTelegramGroupPeerId(params.context.chatId, threadSpec)
     : params.context.historyKey;
@@ -263,13 +264,15 @@ export function resolveDispatchTelegramContext(params: {
     replyThreadId: threadSpec.id,
     sendTyping: recoveredSendTyping,
     sendRecordVoice: recoveredSendRecordVoice,
-    turn: {
-      ...params.context.turn,
-      record: {
-        ...params.context.turn.record,
-        updateLastRoute: recoveredUpdateLastRoute,
-      },
-    },
+    turn: params.context.turn
+      ? {
+          ...params.context.turn,
+          record: {
+            ...params.context.turn.record,
+            updateLastRoute: recoveredUpdateLastRoute,
+          },
+        }
+      : undefined,
     ctxPayload: params.context.ctxPayload,
   };
   return recovered;
