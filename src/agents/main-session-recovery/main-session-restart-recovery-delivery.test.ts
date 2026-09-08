@@ -170,15 +170,19 @@ describe("restart resumption notice lifetime", () => {
     async ({ patch }) => {
       await withNoticeTransport(async ({ announce, retire, drain, sendText, visibleSend }) => {
         const hold = createDeferredCore();
+        const queued = createDeferredCore();
         sendText.mockImplementationOnce(async (ctx) => {
-          await hold.promise;
           await ctx.onPlatformSendDispatch?.();
+          queued.resolve();
+          await hold.promise;
+          ctx.assertDirectAdapterHandoff?.();
           visibleSend(ctx.text);
           return { channel: "signal", messageId: "held-notice" };
         });
         const pending = announce();
         try {
-          await vi.waitFor(() => expect(sendText).toHaveBeenCalledOnce());
+          await queued.promise;
+          expect(sendText).toHaveBeenCalledOnce();
           await retire(patch);
         } finally {
           hold.resolve();
