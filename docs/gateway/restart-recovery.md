@@ -336,9 +336,23 @@ so the agent can deliver it instead of redoing the work.
 
 When a recovered turn starts with an eligible channel delivery route, OpenClaw
 sends a resumption notice to that conversation, retaining its account and topic.
-The final reply uses the same delivery route. Transcript-only turns stay private,
-and a turn that has already finished does not receive a late resumption notice.
-A failed notice does not restart or replay the recovered work.
+Resumption notices are transient: a failed notice is not queued for later replay
+and never restarts the recovered work. Terminal recovery-failure notices retain
+their normal durable delivery behavior.
+
+Telegram recovery reuses ordinary reply presentation for progress, typing, and
+final delivery. Its existing streaming, verbose, and reasoning settings still
+apply; verbose tool output does not create a duplicate tool preview. Recovery
+continues the existing session rather than recording a new inbound user message.
+Channels without a recovery presenter retain their ordinary final-delivery path.
+See [Channel plugin recovery presentation](/plugins/sdk-channel-plugins#restart-recovery-presentation).
+
+Transcript-only and explicitly non-delivering turns stay private. A remembered
+Telegram route does not grant an externally initiated turn permission to send.
+The recovery must still own its session, run, and delivery route when a visible
+send occurs, and current send-policy denial wins. When recovery retains an exact
+media set or suppresses previously delivered text, it uses final-only delivery
+instead of streaming content that could repeat an earlier response.
 
 Startup reconciliation retries transient failures up to three times with
 exponential backoff. Separately, each interrupted main-session cycle has a

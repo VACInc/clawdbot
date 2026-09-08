@@ -18,6 +18,7 @@ import type {
   DispatchFromConfigResult,
 } from "./dispatch-from-config.types.js";
 import type { ReplyDispatchKind } from "./reply-dispatcher.types.js";
+import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 
 export type DispatchProcessedOutcome = "completed" | "skipped" | "error";
 
@@ -208,7 +209,11 @@ export function emitInboundMessageAuditTerminal(params: {
 export function createInboundMessageAuditTerminal(
   params: DispatchFromConfigParams,
 ): InboundMessageAuditTerminalRecorder | undefined {
-  if (!hasTrustedMessageAuditListeners()) {
+  // Recovery reuses presentation for an already accepted turn, not new ingress.
+  if (
+    !hasTrustedMessageAuditListeners() ||
+    resolveReplyOperationRunState(params.replyOptions)?.restartRecovery
+  ) {
     return undefined;
   }
 

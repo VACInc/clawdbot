@@ -1,5 +1,5 @@
 import type { Message } from "grammy/types";
-import type { ChannelRecoveryReplyContext } from "openclaw/plugin-sdk/channel-contract";
+import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { finalizeInboundContext } from "openclaw/plugin-sdk/reply-runtime";
 import { defaultRuntime } from "openclaw/plugin-sdk/runtime-env";
 import type { TelegramReplyContext } from "./bot-message-context.js";
@@ -8,12 +8,19 @@ import { buildTypingThreadParams, resolveTelegramStreamMode } from "./bot/helper
 import { withTelegramApiContext } from "./send-context.js";
 import { parseTelegramTarget } from "./targets.js";
 
+type RecoveryReplyContext = Parameters<
+  NonNullable<NonNullable<ChannelPlugin["streaming"]>["dispatchRecoveryReply"]>
+>[0];
+
 /** Reuse normal presentation without fabricating a new user, command, or reply ancestry. */
-export async function dispatchTelegramRecoveryReply(
-  params: ChannelRecoveryReplyContext,
-): Promise<void> {
+export async function dispatchTelegramRecoveryReply(params: RecoveryReplyContext): Promise<void> {
   await withTelegramApiContext(
-    { cfg: params.cfg, accountId: params.accountId, signal: params.abortSignal },
+    {
+      cfg: params.cfg,
+      accountId: params.accountId,
+      signal: params.abortSignal,
+      assertPlatformSendAuthorized: params.assertCurrent,
+    },
     async ({ api, account }) => {
       const target = parseTelegramTarget(params.to);
       const chatId = Number(target.chatId);
@@ -50,7 +57,6 @@ export async function dispatchTelegramRecoveryReply(
           ChatType: isGroup ? "group" : "direct",
           MessageThreadId: threadSpec.id,
           TransportThreadId: threadSpec.id,
-          InternalTurnSource: "restart-recovery" as const,
           InboundEventKind: "user_request" as const,
           BodyForAgent: "Continue the interrupted response.",
           BodyForCommands: "",
@@ -74,7 +80,6 @@ export async function dispatchTelegramRecoveryReply(
           accountId: account.accountId,
           sessionKey: params.sessionKey,
         },
-        turn: { record: { onRecordError: (error) => defaultRuntime.error?.(String(error)) } },
         resolvedThreadId: threadSpec.id,
         replyThreadId: threadSpec.id,
         threadSpec,
@@ -82,9 +87,15 @@ export async function dispatchTelegramRecoveryReply(
         groupHistories: new Map(),
         skillFilter: undefined,
         sendTyping: async () => {
+          if (threadSpec.scope === "direct-messages") {
+            return;
+          }
           await api.sendChatAction(chatId, "typing", buildTypingThreadParams(threadSpec.id));
         },
         sendRecordVoice: async () => {
+          if (threadSpec.scope === "direct-messages") {
+            return;
+          }
           await api.sendChatAction(chatId, "record_voice", buildTypingThreadParams(threadSpec.id));
         },
         sendChatActionHandler: {

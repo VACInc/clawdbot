@@ -257,6 +257,31 @@ export function dispatchAgentRunFromGateway(params: {
         },
       }
     : ingressOptsWithSpawnFacts;
+  const recoveryRunOwner = params.context.chatAbortControllers.get(params.runId);
+  const assertRecoveryRunOwnerCurrent = () => {
+    const entry = recoveryRunOwner;
+    const authority = entry?.agentRunDelegatedAuthority;
+    if (
+      runOwnerCleanedUp ||
+      !entry ||
+      params.context.chatAbortControllers.get(params.runId) !== entry ||
+      entry.controller !== params.abortController ||
+      entry.sessionKey !== params.ingressOpts.sessionKey ||
+      !entry.operationalRunInstance ||
+      entry.operationalRunInstance !== params.ingressOpts.operationalRunInstance ||
+      !entry.lifecycleGeneration ||
+      entry.lifecycleGeneration !== params.ingressOpts.lifecycleGeneration ||
+      !isAgentEventLifecycleGenerationCurrent(entry.lifecycleGeneration) ||
+      entry.registrationCleanupRequested ||
+      params.abortController.signal.aborted ||
+      (entry.executionStarted && !authority) ||
+      (authority &&
+        (authority.operationalRunInstance !== entry.operationalRunInstance ||
+          !validateAgentRunDelegatedAuthority(authority)))
+    ) {
+      throw new Error("Restart presentation no longer owns the Gateway run");
+    }
+  };
   const runAgent = () =>
     runWithCanonicalSkillWorkspace(params.canonicalSkillWorkspaceDir, () =>
       runAgentWithRecoveryChannelReply({
@@ -264,6 +289,7 @@ export function dispatchAgentRunFromGateway(params: {
           ? { ...ingressOptsWithTaskBinding, cronCreatorAuthorityCapability }
           : ingressOptsWithTaskBinding,
         cfg: params.commandRuntimeContext?.config ?? params.context.getRuntimeConfig(),
+        assertCurrent: assertRecoveryRunOwnerCurrent,
         run: (opts) =>
           agentCommandFromGatewayIngress(
             opts,

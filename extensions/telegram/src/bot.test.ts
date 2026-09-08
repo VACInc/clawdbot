@@ -728,8 +728,6 @@ function createDirectDispatchContext(cfg: OpenClawConfig): TelegramDispatchParam
     sendRecordVoice: vi.fn(async () => undefined),
     sendChatActionHandler: {
       sendChatAction: vi.fn(async () => undefined),
-      isSuspended: () => false,
-      reset: vi.fn(),
     },
     ackReactionPromise: null,
     reactionApi: null,

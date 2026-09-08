@@ -151,9 +151,16 @@ export type AgentCommandOpts = {
   onExecutionStarted?: () => void;
   /** In-process channel presentation owned by the admitted restart continuation. */
   channelReply?: {
-    options: import("../../auto-reply/reply/get-reply.types.js").InternalGetReplyOptions;
+    /** Join channel error presentation before command recovery cleanup. */
+    onError?: (error: unknown) => Promise<void>;
+    /** Absent for final-only constrained recovery; do not install streaming handlers. */
+    options?: import("../../auto-reply/reply/get-reply.types.js").InternalGetReplyOptions;
     deliverFinal: (
       payloads: import("../../auto-reply/reply-payload.js").ReplyPayload[],
+      /** Shared send gate; command retains the sole batch completion and cleanup. */
+      custody?: import("../../channels/turn/direct-delivery-custody.js").DirectPendingFinalBatchCustody,
+      /** Only the command lifecycle can attest a successful, intentionally empty terminal. */
+      deliberateSilentTerminalReply?: boolean,
     ) => Promise<import("./delivery.js").AgentCommandDeliveryStatus>;
   };
   extraSystemPrompt?: string;

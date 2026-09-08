@@ -33,7 +33,23 @@ type AgentTurnPresentation = {
 
 /** Builds the channel-presentation callbacks shared by CLI and embedded runs. */
 export function createAgentTurnPresentation(params: {
-  turn: AgentTurnParams;
+  turn: Pick<
+    AgentTurnParams,
+    | "opts"
+    | "isHeartbeat"
+    | "replyOperation"
+    | "replyThreading"
+    | "applyReplyToMode"
+    | "blockStreamingEnabled"
+    | "blockReplyPipeline"
+  > & {
+    followupRun: { run: Pick<AgentTurnParams["followupRun"]["run"], "silentExpected"> };
+    sessionCtx: Pick<
+      AgentTurnParams["sessionCtx"],
+      "agentText" | "BodyForAgent" | "MessageSid" | "MessageSidFull"
+    >;
+    typingSignals: Pick<AgentTurnParams["typingSignals"], "signalTextDelta">;
+  };
   replyMediaContext: ReplyMediaContext;
   directlySentBlockKeys: Set<string>;
   directBlockDeliveries: DirectBlockDelivery[];
