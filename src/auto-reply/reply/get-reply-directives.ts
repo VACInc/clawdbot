@@ -39,7 +39,7 @@ import {
   type VerboseLevel,
 } from "../thinking.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
-import { resolveBlockStreamingChunking } from "./block-streaming.js";
+import { resolveBlockStreamingChunking, resolveBlockStreamingEnabled } from "./block-streaming.js";
 import { buildCommandContext } from "./commands-context.js";
 import { type InlineDirectives, resolveReplyDirectiveCommand } from "./directive-handling.parse.js";
 import {
@@ -417,9 +417,7 @@ export async function resolveReplyDirectives(params: {
       (agentCfg?.elevatedDefault as ElevatedLevel | undefined) ??
       "on")
     : "off";
-  const blockStreamingEnabled =
-    opts?.disableBlockStreaming === false ||
-    (opts?.disableBlockStreaming !== true && agentCfg?.blockStreamingDefault === "on");
+  const blockStreamingEnabled = resolveBlockStreamingEnabled(agentCfg, opts);
   // Off-mode text blocks are suppressed by delivery; keep captions until media is parsed.
   const resolvedBlockStreamingBreak: "text_end" | "message_end" =
     !blockStreamingEnabled || agentCfg?.blockStreamingBreak === "message_end"

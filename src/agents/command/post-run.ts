@@ -348,7 +348,13 @@ export async function finalizeEmbeddedAgentCommand(params: {
       suppressVisibleSessionEffects: params.suppressVisibleSessionEffects,
       sessionReboundDuringRun,
       payloads,
-      deliveryContext: params.currentRunDeliveryContext,
+      // Target preparation may normalize an alias (for example a numeric chat
+      // to a channel-prefixed target). Keep the exact route held by this recovery
+      // owner so the pending marker does not replace its presentation identity.
+      deliveryContext:
+        sessionEntry?.restartRecoveryDeliveryRunId === runId
+          ? (sessionEntry.restartRecoveryDeliveryContext ?? params.currentRunDeliveryContext)
+          : params.currentRunDeliveryContext,
       runOwnedSessionId,
     });
     sessionEntry = pendingFinalDeliveryMarker.sessionEntry;
@@ -522,6 +528,11 @@ export async function finalizeEmbeddedAgentCommand(params: {
       sessionEntry,
       result,
       payloads,
+      successfulTerminal:
+        !fallbackExhausted &&
+        !lifecycle.resolveResultError(result, false) &&
+        !result.meta.yielded &&
+        classifyAgentRunTerminalOutcome(terminal.outcome) === "success",
       assertDeliveryCurrent: () => {
         params.opts.abortSignal?.throwIfAborted();
         assertAgentRunLifecycleGenerationCurrent(lifecycleGeneration);

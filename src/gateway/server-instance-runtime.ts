@@ -225,9 +225,16 @@ export function createGatewayInstanceRuntime(
         gatewayOwnedDelivery: true,
         bestEffort: true,
         idempotencyKey: payload.idempotencyKey,
-        deliveryIntentId: payload.idempotencyKey,
-        reusePendingDeliveryIntent: true,
-        completionRetention: RECOVERY_NOTICE_COMPLETION_RETENTION,
+        // A resumption notice is valid only while its process-local owner is
+        // current. Queue recovery cannot reconstruct that fence, so never give
+        // it durable custody. Terminal tombstone notices keep replay/deduplication.
+        ...(payload.isCurrent
+          ? { skipQueue: true }
+          : {
+              deliveryIntentId: payload.idempotencyKey,
+              reusePendingDeliveryIntent: true,
+              completionRetention: RECOVERY_NOTICE_COMPLETION_RETENTION,
+            }),
         onPlatformSendDispatch: async () => {
           if (closed || !options.isDispatchAvailable() || payload.isCurrent?.() === false) {
             throw new Error("Recovery notice owner retired before delivery");

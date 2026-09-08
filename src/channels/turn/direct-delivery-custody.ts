@@ -1,4 +1,5 @@
 import {
+  copyReplyPayloadMetadata,
   getReplyPayloadMetadata,
   setReplyPayloadMetadata,
   type ReplyPayload,
@@ -67,6 +68,63 @@ export function createDirectPendingFinalCustody(
       // Every physical post must observe the state left by the prior post's check.
       admissionTail = admission.catch(() => undefined);
       return admission;
+    },
+  };
+}
+
+/** Send authority only: individual presentation payloads cannot settle the batch receipt. */
+export type DirectPendingFinalBatchCustody = Pick<
+  DirectPendingFinalCustody,
+  "assertPlatformSendAuthorized" | "onPlatformSendDispatch"
+>;
+
+/** Transfer the command's single receipt to one owner before splitting presentation. */
+export async function claimDirectPendingFinalBatch(payloads: ReplyPayload[]) {
+  const ownerPayload = payloads.find((payload) => resolvePendingFinalCompletion(payload));
+  if (!ownerPayload) {
+    return undefined;
+  }
+  const completion = resolvePendingFinalCompletion(ownerPayload)!;
+  const direct = createDirectPendingFinalCustody(ownerPayload)!;
+  direct.assertPlatformSendAuthorized();
+  const claim = await settlePendingFinalDelivery(completion, "queued", ["prepared"]);
+  if (claim.state !== "queued") {
+    throw new PlatformMessageNotDispatchedError("Pending final batch is no longer prepared", {
+      cause: new Error("pending final delivery is " + claim.state),
+    });
+  }
+  let active = true;
+  const assertActive = () => {
+    if (!active) {
+      throw new PlatformMessageNotDispatchedError("Pending final batch custody is closed", {
+        cause: new Error("Command presentation has settled"),
+      });
+    }
+    direct.assertPlatformSendAuthorized();
+  };
+  const custody: DirectPendingFinalBatchCustody = {
+    assertPlatformSendAuthorized: assertActive,
+    onPlatformSendDispatch: async () => {
+      assertActive();
+      await direct.onPlatformSendDispatch();
+      assertActive();
+    },
+  };
+  return {
+    custody,
+    // This is an explicit transfer, not a data-only clone: keep writer authority,
+    // hooks and other private metadata, but never lend the batch receipt to an
+    // independently settling dispatcher or durable transport queue.
+    payloads: payloads.map((payload) =>
+      setReplyPayloadMetadata(copyReplyPayloadMetadata(payload, { ...payload }), {
+        pendingFinalDeliveryCompletion: undefined,
+      }),
+    ),
+    settle: async (state: "prepared" | "delivered" | "suppressed" | "unknown") => {
+      active = false;
+      // Receipt settlement deliberately does not clear the recovery claim. The
+      // paused command owns cleanup after the presenter, including teardown.
+      await settlePendingFinalDelivery(completion, state, ["queued", "unknown"]);
     },
   };
 }
