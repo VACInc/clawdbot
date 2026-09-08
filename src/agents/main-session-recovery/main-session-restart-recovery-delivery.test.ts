@@ -130,9 +130,25 @@ const retirements = [
   { name: "completion", patch: { status: "done" } },
   { name: "replacement", patch: { sessionId: "session-2" } },
   { name: "send denial", patch: { sendPolicy: "deny" } },
+  {
+    name: "automatic delivery revoked",
+    patch: { restartRecoverySourceReplyDeliveryMode: "message_tool_only" },
+  },
 ] satisfies { name: string; patch: Partial<SessionEntry> }[];
 
 describe("restart resumption notice lifetime", () => {
+  it("does not announce a retained message-tool-only channel claim", async () => {
+    await withNoticeTransport(async ({ announce, retire, drain, sendText, visibleSend }) => {
+      await retire({ restartRecoverySourceReplyDeliveryMode: "message_tool_only" });
+      await announce();
+      expect(sendText).not.toHaveBeenCalled();
+      expect(visibleSend).not.toHaveBeenCalled();
+      await drain();
+      expect(visibleSend).not.toHaveBeenCalled();
+      expect(findDeliveryIntentOwner(resumptionId)).toBeNull();
+    });
+  });
+
   it.each(retirements)(
     "does not replay a failed resumption notice after $name",
     async ({ patch }) => {
@@ -205,7 +221,8 @@ describe("restart resumption notice lifetime", () => {
   });
 
   it("preserves durable tombstone retry and completed-notice deduplication", async () => {
-    await withNoticeTransport(async ({ runtime, drain, sendText, visibleSend }) => {
+    await withNoticeTransport(async ({ runtime, retire, drain, sendText, visibleSend }) => {
+      await retire({ restartRecoverySourceReplyDeliveryMode: "message_tool_only" });
       const idempotencyKey = "main-session-restart-recovery:source-run:failed-notice";
       const notice = { ...deliveryContext, text: "Session recovery failed", idempotencyKey };
       sendText.mockRejectedValueOnce(notDispatched());
