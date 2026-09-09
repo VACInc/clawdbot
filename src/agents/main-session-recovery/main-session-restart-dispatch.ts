@@ -39,7 +39,6 @@ import {
 import { dispatchRestartRecoveryUntilStarted } from "./main-session-restart-dispatch-start.js";
 import {
   announceRestartRecoveryResumption,
-  isRestartRecoveryDeliveryCurrent,
   resolveRestartRecoveryDeliveryContext,
 } from "./main-session-restart-recovery-delivery.js";
 import { normalizeFiniteTimestamp } from "./main-session-restart-recovery-shared.js";
@@ -528,15 +527,9 @@ export async function resumeMainSession(params: {
       log.info(`dispatching restart-safe recovery for ${params.sessionKey}`);
     }
     dispatchStarted = true;
-    let dispatchSettled = false;
-    let stopTyping: (() => void) | undefined;
     const dispatchOutcome = await dispatchRestartRecoveryUntilStarted({
       agentParams,
       gatewayRuntime: params.gatewayRuntime,
-      onSettled: () => {
-        dispatchSettled = true;
-        stopTyping?.();
-      },
     });
     ({ dispatchAccepted, executionStarted, preStartAbortAttempted, preStartAbortConfirmed } =
       dispatchOutcome.observation);
@@ -593,26 +586,7 @@ export async function resumeMainSession(params: {
       return "skipped";
     }
     const resumeResult = terminalStatus ? "settled" : "started";
-    if (resumeResult === "started" && agentParams.deliver && deliveryContext) {
-      if (!dispatchSettled) {
-        stopTyping = params.gatewayRuntime.startRecoveryTyping?.({
-          ...deliveryContext,
-          agentId: params.agentId,
-          runId: recoveryRunId,
-          isCurrent: (cfg) =>
-            !dispatchSettled &&
-            isRestartRecoveryDeliveryCurrent({
-              ...target,
-              sessionKey: dispatchSessionKey,
-              sessionId: params.entry.sessionId,
-              recoveryRunId,
-              lifecycleGeneration,
-              deliveryContext,
-              cfg,
-              shouldContinue: params.shouldContinue,
-            }),
-        });
-      }
+    if (resumeResult === "started" && deliveryContext) {
       await announceRestartRecoveryResumption({
         ...target,
         sessionKey: dispatchSessionKey,

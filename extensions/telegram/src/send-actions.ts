@@ -1,4 +1,3 @@
-import { AbortController as TelegramAbortController } from "abort-controller";
 import type { ReactionType, ReactionTypeEmoji } from "grammy/types";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { formatErrorMessage } from "openclaw/plugin-sdk/ssrf-runtime";
@@ -28,7 +27,7 @@ type TelegramReactionOpts = Omit<TelegramMessageActionOpts, "notify"> & {
 };
 
 type TelegramTypingOpts = Omit<TelegramApiCallOpts, "gatewayClientScopes"> &
-  Pick<TelegramSendOpts, "messageThreadId" | "signal" | "assertPlatformSendAuthorized">;
+  Pick<TelegramSendOpts, "messageThreadId">;
 
 export async function getTelegramAllowedReactions(
   chatId: string | number,
@@ -47,57 +46,38 @@ export async function sendTypingTelegram(
   to: string,
   opts: TelegramTypingOpts,
 ): Promise<{ ok: true }> {
-  opts.signal?.throwIfAborted();
-  opts.assertPlatformSendAuthorized?.();
   const target = parseTelegramTarget(to);
   if (target.directMessagesTopicId != null) {
     throw new Error("Telegram typing is not supported in channel Direct Messages chats.");
   }
-  // grammY's Node API uses the abort-controller signal, not Node's native type.
-  // Bridge the event so queues recognize owner cancellation instead of cooling down the account.
-  const apiAbort = opts.signal ? new TelegramAbortController() : undefined;
-  const abort = () => apiAbort?.abort();
-  if (opts.signal?.aborted) {
-    abort();
-  } else {
-    opts.signal?.addEventListener("abort", abort, { once: true });
-  }
-  try {
-    return await withTelegramApiContext(opts, async (context): Promise<{ ok: true }> => {
-      const { cfg, account, api } = context;
-      const chatId = await resolveAndPersistChatId({
-        cfg,
-        api,
-        lookupTarget: target.chatId,
-        persistTarget: to,
-        verbose: opts.verbose,
-      });
-      const requestWithDiag = createTelegramRequestWithDiag({
-        cfg,
-        account,
-        retry: opts.retry,
-        verbose: opts.verbose,
-        shouldRetry: (err) => isRecoverableTelegramNetworkError(err, { context: "action" }),
-      });
-      const threadParams = buildTypingThreadParams(target.messageThreadId ?? opts.messageThreadId);
-      const signalArgs: [Parameters<TelegramApi["sendChatAction"]>[3]?] = apiAbort
-        ? [apiAbort.signal]
-        : [];
-      await requestWithDiag(
-        () =>
-          api.sendChatAction(
-            chatId,
-            "typing",
-            threadParams as Parameters<TelegramApi["sendChatAction"]>[2],
-            ...signalArgs,
-          ),
-        "typing",
-      );
-      return { ok: true };
+  return withTelegramApiContext(opts, async (context): Promise<{ ok: true }> => {
+    const { cfg, account, api } = context;
+    const chatId = await resolveAndPersistChatId({
+      cfg,
+      api,
+      lookupTarget: target.chatId,
+      persistTarget: to,
+      verbose: opts.verbose,
     });
-  } finally {
-    opts.signal?.removeEventListener("abort", abort);
-  }
+    const requestWithDiag = createTelegramRequestWithDiag({
+      cfg,
+      account,
+      retry: opts.retry,
+      verbose: opts.verbose,
+      shouldRetry: (err) => isRecoverableTelegramNetworkError(err, { context: "action" }),
+    });
+    const threadParams = buildTypingThreadParams(target.messageThreadId ?? opts.messageThreadId);
+    await requestWithDiag(
+      () =>
+        api.sendChatAction(
+          chatId,
+          "typing",
+          threadParams as Parameters<TelegramApi["sendChatAction"]>[2],
+        ),
+      "typing",
+    );
+    return { ok: true };
+  });
 }
 
 export async function reactMessageTelegram(

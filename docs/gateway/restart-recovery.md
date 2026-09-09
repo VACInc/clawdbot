@@ -336,10 +336,7 @@ so the agent can deliver it instead of redoing the work.
 
 When a recovered turn starts with an eligible channel delivery route, OpenClaw
 sends a resumption notice to that conversation, retaining its account and topic.
-The final reply uses the same delivery route. Channels with guarded typing support keep
-a typing indicator active while the recovered run is current, stopping when it
-settles, loses its route or permission, or the Gateway closes. Recovery does not
-stream tool progress or take over final-reply retries. Transcript-only turns stay private,
+The final reply uses the same delivery route. Transcript-only turns stay private,
 and a turn that has already finished does not receive a late resumption notice.
 A failed notice does not restart or replay the recovered work.
 

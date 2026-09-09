@@ -1902,7 +1902,7 @@ describe("main-session-restart-recovery", () => {
         text: "I'm continuing your interrupted request after the gateway restart. I'll post the result here.",
         idempotencyKey: `main-session-restart-recovery:${String(gatewayParams().idempotencyKey)}:resumed-notice`,
       });
-      expect(notice?.isCurrent?.({})).toBe(true);
+      expect(notice?.isCurrent?.()).toBe(true);
       const current = loadSessionEntry({ sessionKey, storePath });
       if (!current) {
         throw new Error("expected recovered session");
@@ -1910,11 +1910,11 @@ describe("main-session-restart-recovery", () => {
       await writeStore(sessionsDir, {
         [sessionKey]: { ...current, abortedLastRun: true },
       });
-      expect(notice?.isCurrent?.({})).toBe(false);
+      expect(notice?.isCurrent?.()).toBe(false);
       await writeStore(sessionsDir, {
         [sessionKey]: { ...current, sessionId: "replacement-session" },
       });
-      expect(notice?.isCurrent?.({})).toBe(false);
+      expect(notice?.isCurrent?.()).toBe(false);
     },
   );
 
@@ -2077,33 +2077,6 @@ describe("main-session-restart-recovery", () => {
         process.env.OPENCLAW_STATE_DIR = previousStateDir;
       }
     }
-  });
-
-  it("resumes a channel-owned message-tool-only claim without an automatic notice", async () => {
-    const { sessionsDir } = await makeMainSessionFixture({
-      sessionKey: "agent:main:telegram:group:-100123:topic:99",
-      restartRecoveryDeliveryRunId: "channel-tool-only-run",
-      restartRecoveryDeliverySourceRunId: "channel-tool-only-run",
-      restartRecoverySourceIngress: "channel",
-      restartRecoverySourceReplyDeliveryMode: "message_tool_only",
-      restartRecoveryDeliveryContext: {
-        channel: "telegram",
-        to: "telegram:-100123",
-        accountId: "work",
-        threadId: 99,
-      },
-    });
-    await writeCompletedToolTranscript(sessionsDir);
-    await expectRecovery({ started: 1, settled: 0, failed: 0, skipped: 0 });
-    expect(gatewayParams()).toMatchObject({
-      channel: "telegram",
-      to: "telegram:-100123",
-      accountId: "work",
-      threadId: "99",
-      deliver: false,
-      sourceReplyDeliveryMode: "message_tool_only",
-    });
-    expect(sendRecoveryNotice).not.toHaveBeenCalled();
   });
 
   it("reuses a transcript-only claim without inferring historical session routes", async () => {
