@@ -27,7 +27,8 @@ function fixture(
   const manager = createRecoveryTypingManager({
     getConfig: () => ({ agents: { defaults: { timeoutSeconds: options.timeoutSeconds ?? 120 } } }),
     isAvailable: () => available,
-    resolveAdapter: options.resolveAdapter ?? (async () => ({ sendTyping, clearTyping })),
+    resolveAdapter:
+      options.resolveAdapter ?? (async () => ({ sendTypingV2: sendTyping, clearTyping })),
     onError,
   });
   managers.push(manager);
@@ -90,7 +91,7 @@ describe("recovery typing", () => {
     const f = fixture({ resolveAdapter: () => adapter.promise });
     f.manager.start(f.params);
     f.retire();
-    adapter.resolve({ sendTyping });
+    adapter.resolve({ sendTypingV2: sendTyping });
     await vi.advanceTimersByTimeAsync(10_000);
     expect(sendTyping).not.toHaveBeenCalled();
   });
@@ -133,7 +134,7 @@ describe("recovery typing", () => {
           entries: { main: { typingMode: where === "agent" ? "never" : undefined } },
         },
       }),
-      resolveAdapter: async () => ({ sendTyping }),
+      resolveAdapter: async () => ({ sendTypingV2: sendTyping }),
     });
     managers.push(manager);
     manager.start({
@@ -158,7 +159,7 @@ describe("recovery typing", () => {
           entries: { main: { typingMode: enabled ? "instant" : "never" } },
         },
       }),
-      resolveAdapter: async () => ({ sendTyping, clearTyping }),
+      resolveAdapter: async () => ({ sendTypingV2: sendTyping, clearTyping }),
     });
     managers.push(manager);
     manager.start({
@@ -174,5 +175,14 @@ describe("recovery typing", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(sendTyping).toHaveBeenCalledOnce();
     expect(clearTyping).toHaveBeenCalledOnce();
+  });
+  it("does not fall back to an unguarded legacy typing hook", async () => {
+    const legacy = vi.fn(async () => {});
+    const f = fixture({ resolveAdapter: async () => ({ sendTyping: legacy }) });
+    f.manager.start(f.params);
+    await vi.dynamicImportSettled();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(legacy).not.toHaveBeenCalled();
+    expect(f.onError).not.toHaveBeenCalled();
   });
 });

@@ -905,6 +905,25 @@ export const telegramPlugin = createChatChannelPlugin({
       },
     },
     heartbeat: {
+      sendTypingV2: async ({
+        cfg,
+        to,
+        accountId,
+        threadId,
+        signal,
+        assertPlatformSendAuthorized,
+      }) => {
+        assertPlatformSendAuthorized();
+        const { sendTypingTelegram } = await loadTelegramSendModule();
+        assertPlatformSendAuthorized();
+        await sendTypingTelegram(to, {
+          cfg,
+          ...(accountId ? { accountId } : {}),
+          messageThreadId: parseTelegramThreadId(threadId),
+          signal,
+          assertPlatformSendAuthorized,
+        });
+      },
       sendTyping: async ({ cfg, to, accountId, threadId }) => {
         const { sendTypingTelegram } = await loadTelegramSendModule();
         await sendTypingTelegram(to, {

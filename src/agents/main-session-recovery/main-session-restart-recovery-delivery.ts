@@ -92,9 +92,9 @@ export function isRestartRecoveryDeliveryCurrent(params: RestartRecoveryDelivery
 export async function announceRestartRecoveryResumption(
   params: RestartRecoveryDeliveryScope & { gatewayRuntime: GatewayRecoveryRuntime },
 ): Promise<void> {
-  const isCurrent = () => isRestartRecoveryDeliveryCurrent(params);
+  const isCurrent = (cfg: OpenClawConfig) => isRestartRecoveryDeliveryCurrent({ ...params, cfg });
   try {
-    if (!isCurrent()) {
+    if (!isRestartRecoveryDeliveryCurrent(params)) {
       return;
     }
     await params.gatewayRuntime.sendRecoveryNotice({
