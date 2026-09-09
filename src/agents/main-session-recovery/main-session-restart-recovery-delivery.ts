@@ -65,7 +65,7 @@ export async function announceRestartRecoveryResumption(
     gatewayRuntime: GatewayRecoveryRuntime;
   },
 ): Promise<void> {
-  const isCurrent = () => {
+  const isCurrent = (cfg = params.cfg) => {
     if (
       params.shouldContinue?.() === false ||
       getAgentEventLifecycleGeneration() !== params.lifecycleGeneration
@@ -78,9 +78,11 @@ export async function announceRestartRecoveryResumption(
       current.status === "running" &&
       current.abortedLastRun !== true &&
       current.restartRecoveryDeliveryRunId === params.recoveryRunId &&
+      // A retained route does not authorize an automatic message.
+      current.restartRecoverySourceReplyDeliveryMode !== "message_tool_only" &&
       deliveryContextKey(
         resolveRestartRecoveryDeliveryContext({
-          cfg: params.cfg,
+          cfg,
           entry: current,
           sessionKey: params.sessionKey,
         }),
