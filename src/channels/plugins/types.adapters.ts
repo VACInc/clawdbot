@@ -37,7 +37,6 @@ import type {
   ChannelSecurityDmPolicy,
   ChannelStatusIssue,
 } from "./types.core.js";
-import type { ChannelTypingRequest, ChannelTypingRequestV2 } from "./typing.types.js";
 export type { ChannelSetupAdapter } from "./setup-adapter.types.js";
 export type {
   ChannelOutboundAdapter,
@@ -347,11 +346,20 @@ export type ChannelHeartbeatAdapter = {
     accountId?: string | null;
     deps?: ChannelHeartbeatDeps;
   }) => Promise<{ ok: boolean; reason: string }>;
-  /** Legacy heartbeat hook; kept source-compatible for existing callers. */
-  sendTyping?: (params: ChannelTypingRequest) => Promise<void> | void;
-  /** Opt-in guarded hook. Core never falls back to legacy typing for owned recovery. */
-  sendTypingV2?: (params: ChannelTypingRequestV2) => Promise<void> | void;
-  clearTyping?: (params: ChannelTypingRequest) => Promise<void> | void;
+  sendTyping?: (params: {
+    cfg: OpenClawConfig;
+    to: string;
+    accountId?: string | null;
+    threadId?: string | number | null;
+    deps?: ChannelHeartbeatDeps;
+  }) => Promise<void> | void;
+  clearTyping?: (params: {
+    cfg: OpenClawConfig;
+    to: string;
+    accountId?: string | null;
+    threadId?: string | number | null;
+    deps?: ChannelHeartbeatDeps;
+  }) => Promise<void> | void;
 };
 
 type ChannelDirectorySelfParams = {

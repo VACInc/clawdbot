@@ -36,24 +36,12 @@ export type GatewayApprovalEventPublisher = {
 
 export type GatewayRecoverySessionMethod = "chat.history" | "chat.abort" | "sessions.delete";
 
-export type GatewayRecoveryTypingParams = {
-  agentId?: string;
-  channel: string;
-  to: string;
-  accountId?: string;
-  threadId?: string | number;
-  runId: string;
-  isCurrent: (cfg: import("../config/types.openclaw.js").OpenClawConfig) => boolean;
-};
-
 export type GatewayRecoveryRuntime = {
   dispatchSessionMethod: <T = unknown>(
     method: GatewayRecoverySessionMethod,
     params: unknown,
     options?: { timeoutMs?: number; signal?: AbortSignal; assertCurrent?: () => void },
   ) => Promise<T>;
-  /** Best-effort activity only; never owns or modifies reply delivery. */
-  startRecoveryTyping?: (params: GatewayRecoveryTypingParams) => () => void;
   dispatchAgent: <T = unknown>(
     params: AgentRunRequest,
     timeoutMs?: number,
@@ -71,11 +59,8 @@ export type GatewayRecoveryRuntime = {
     threadId?: string | number;
     text: string;
     idempotencyKey: string;
-    /**
-     * Process-local fence, revalidated after loading and before outbound dispatch.
-     * Guarded notices are transient: never persisted or retried by queue recovery.
-     */
-    isCurrent?: (cfg: import("../config/types.openclaw.js").OpenClawConfig) => boolean;
+    /** Revalidated after lazy runtime loading and immediately before outbound dispatch. */
+    isCurrent?: () => boolean;
   }) => Promise<{
     /** True when delivery produced zero platform results (policy/channel suppression). */
     suppressed: boolean;

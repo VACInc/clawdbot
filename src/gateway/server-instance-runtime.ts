@@ -21,7 +21,6 @@ import {
   WRITE_SCOPE,
 } from "./method-scopes.js";
 import type { GatewayMethodRegistry } from "./methods/registry.js";
-import { createRecoveryTypingManager } from "./recovery-typing.js";
 import { dispatchGatewayRequestInProcess } from "./server-in-process-dispatch.js";
 import type {
   GatewayInstanceAgentDispatchOptions,
@@ -37,10 +36,6 @@ import {
   cancelSubagentCompletionToolHandoff,
   registerSubagentCompletionToolHandoff,
 } from "./subagent-completion-tool-handoff.js";
-
-const loadRecoveryTypingAdapter = createLazyRuntimeModule(
-  () => import("../channels/plugins/index.js"),
-);
 
 const loadOutboundMessageRuntime = createLazyRuntimeModule(
   () => import("../infra/outbound/message.js"),
@@ -66,13 +61,6 @@ export function createGatewayInstanceRuntime(
   const approvalSubscribers = new Set<GatewayApprovalEventSubscriber>();
   const routeCoordinator = createApprovalNativeRouteCoordinator();
   let closed = false;
-  const recoveryTyping = createRecoveryTypingManager({
-    isAvailable: () => !closed && options.isDispatchAvailable(),
-    getConfig: () => options.getContext().getRuntimeConfig(),
-    resolveAdapter: async (channel) =>
-      (await loadRecoveryTypingAdapter()).getLoadedChannelPlugin(channel)?.heartbeat,
-    onError: () => options.logError?.("recovery typing unavailable; final delivery continues"),
-  });
 
   const assertDispatchAvailable = (method: string) => {
     if (closed || !options.isDispatchAvailable()) {
@@ -163,7 +151,6 @@ export function createGatewayInstanceRuntime(
         payload,
         ...requestOptions,
       }),
-    startRecoveryTyping: (params) => recoveryTyping.start(params),
     dispatchAgent: async <T>(
       payload: AgentRunRequest,
       timeoutMs?: number,
@@ -223,16 +210,9 @@ export function createGatewayInstanceRuntime(
         throw new Error("Gateway instance dispatch unavailable for recovery notice");
       }
       const { sendMessage } = await loadOutboundMessageRuntime();
-      const assertNoticeCurrent = () => {
-        if (
-          closed ||
-          !options.isDispatchAvailable() ||
-          payload.isCurrent?.(options.getContext().getRuntimeConfig()) === false
-        ) {
-          throw new Error("Recovery notice owner retired before delivery");
-        }
-      };
-      assertNoticeCurrent();
+      if (payload.isCurrent?.() === false) {
+        throw new Error("Recovery notice owner retired before delivery");
+      }
       const context = options.getContext();
       const result = await sendMessage({
         cfg: context.getRuntimeConfig(),
@@ -245,19 +225,14 @@ export function createGatewayInstanceRuntime(
         gatewayOwnedDelivery: true,
         bestEffort: true,
         idempotencyKey: payload.idempotencyKey,
-        // A resumption notice is valid only while its process-local owner is
-        // current. Queue recovery cannot reconstruct that fence, so never give
-        // it durable custody. Terminal tombstone notices keep replay/deduplication.
-        ...(payload.isCurrent
-          ? { skipQueue: true }
-          : {
-              deliveryIntentId: payload.idempotencyKey,
-              reusePendingDeliveryIntent: true,
-              completionRetention: RECOVERY_NOTICE_COMPLETION_RETENTION,
-            }),
-        onPlatformSendDispatch: async () => assertNoticeCurrent(),
-        // Provider queues may wait after the asynchronous dispatch callback.
-        assertDirectAdapterHandoff: assertNoticeCurrent,
+        deliveryIntentId: payload.idempotencyKey,
+        reusePendingDeliveryIntent: true,
+        completionRetention: RECOVERY_NOTICE_COMPLETION_RETENTION,
+        onPlatformSendDispatch: async () => {
+          if (closed || !options.isDispatchAvailable() || payload.isCurrent?.() === false) {
+            throw new Error("Recovery notice owner retired before delivery");
+          }
+        },
         abortSignal: AbortSignal.timeout(10_000),
       });
       if (result.deliveryStatus === "failed" || result.deliveryStatus === "partial_failed") {
@@ -359,7 +334,6 @@ export function createGatewayInstanceRuntime(
     isAvailable: () => !closed && options.isDispatchAvailable(),
     close: () => {
       closed = true;
-      recoveryTyping.close();
       releaseRecoveryRuntime();
       approvalSubscribers.clear();
       routeCoordinator.close();
