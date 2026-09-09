@@ -23,12 +23,14 @@ export function createRecoveryTypingManager(options: {
         return existing;
       }
       let stopped = false;
+      const controller = new AbortController();
       let callbacks: TypingCallbacks | undefined;
       const stop = () => {
         if (stopped) {
           return;
         }
         stopped = true;
+        controller.abort();
         active.delete(params.runId);
         callbacks?.onCleanup?.();
       };
@@ -44,7 +46,7 @@ export function createRecoveryTypingManager(options: {
           options.resolveAdapter(params.channel),
           import("../agents/agent-scope-config.js"),
         ]);
-        if (!current() || !adapter?.sendTyping) {
+        if (!current() || !adapter?.sendTypingV2) {
           stop();
           return;
         }
@@ -64,6 +66,14 @@ export function createRecoveryTypingManager(options: {
           accountId: params.accountId,
           threadId: params.threadId,
         };
+        const assertPlatformSendAuthorized = () => {
+          controller.signal.throwIfAborted();
+          const currentConfig = options.getConfig();
+          if (!current(currentConfig) || !typingEnabled(currentConfig)) {
+            stop();
+            controller.signal.throwIfAborted();
+          }
+        };
         callbacks = createTypingCallbacks({
           start: async () => {
             const currentConfig = options.getConfig();
@@ -71,7 +81,12 @@ export function createRecoveryTypingManager(options: {
               stop();
               return;
             }
-            await adapter.sendTyping!({ ...target, cfg: currentConfig });
+            await adapter.sendTypingV2!({
+              ...target,
+              cfg: currentConfig,
+              signal: controller.signal,
+              assertPlatformSendAuthorized,
+            });
           },
           stop: async () => {
             stop();

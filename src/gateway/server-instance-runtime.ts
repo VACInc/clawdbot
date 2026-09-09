@@ -188,7 +188,11 @@ export function createGatewayInstanceRuntime(
       }
       const { sendMessage } = await loadOutboundMessageRuntime();
       const assertNoticeCurrent = () => {
-        if (closed || !options.isDispatchAvailable() || payload.isCurrent?.() === false) {
+        if (
+          closed ||
+          !options.isDispatchAvailable() ||
+          payload.isCurrent?.(options.getContext().getRuntimeConfig()) === false
+        ) {
           throw new Error("Recovery notice owner retired before delivery");
         }
       };

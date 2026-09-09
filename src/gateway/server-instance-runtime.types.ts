@@ -64,7 +64,7 @@ export type GatewayRecoveryRuntime = {
      * Process-local fence, revalidated after loading and before outbound dispatch.
      * Guarded notices are transient: never persisted or retried by queue recovery.
      */
-    isCurrent?: () => boolean;
+    isCurrent?: (cfg: import("../config/types.openclaw.js").OpenClawConfig) => boolean;
   }) => Promise<{
     /** True when delivery produced zero platform results (policy/channel suppression). */
     suppressed: boolean;
