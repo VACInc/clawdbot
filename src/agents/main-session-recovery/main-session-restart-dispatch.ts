@@ -586,7 +586,7 @@ export async function resumeMainSession(params: {
       return "skipped";
     }
     const resumeResult = terminalStatus ? "settled" : "started";
-    if (resumeResult === "started" && deliveryContext) {
+    if (resumeResult === "started" && agentParams.deliver && deliveryContext) {
       await announceRestartRecoveryResumption({
         ...target,
         sessionKey: dispatchSessionKey,

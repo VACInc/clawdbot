@@ -210,9 +210,16 @@ export function createGatewayInstanceRuntime(
         throw new Error("Gateway instance dispatch unavailable for recovery notice");
       }
       const { sendMessage } = await loadOutboundMessageRuntime();
-      if (payload.isCurrent?.() === false) {
-        throw new Error("Recovery notice owner retired before delivery");
-      }
+      const assertNoticeCurrent = () => {
+        if (
+          closed ||
+          !options.isDispatchAvailable() ||
+          payload.isCurrent?.(options.getContext().getRuntimeConfig()) === false
+        ) {
+          throw new Error("Recovery notice owner retired before delivery");
+        }
+      };
+      assertNoticeCurrent();
       const context = options.getContext();
       const result = await sendMessage({
         cfg: context.getRuntimeConfig(),
@@ -225,14 +232,18 @@ export function createGatewayInstanceRuntime(
         gatewayOwnedDelivery: true,
         bestEffort: true,
         idempotencyKey: payload.idempotencyKey,
-        deliveryIntentId: payload.idempotencyKey,
-        reusePendingDeliveryIntent: true,
-        completionRetention: RECOVERY_NOTICE_COMPLETION_RETENTION,
-        onPlatformSendDispatch: async () => {
-          if (closed || !options.isDispatchAvailable() || payload.isCurrent?.() === false) {
-            throw new Error("Recovery notice owner retired before delivery");
-          }
-        },
+        // Queue replay cannot reconstruct a process-local resumption predicate.
+        // Unguarded terminal notices retain their durable retry/deduplication path.
+        ...(payload.isCurrent
+          ? { skipQueue: true }
+          : {
+              deliveryIntentId: payload.idempotencyKey,
+              reusePendingDeliveryIntent: true,
+              completionRetention: RECOVERY_NOTICE_COMPLETION_RETENTION,
+            }),
+        onPlatformSendDispatch: async () => assertNoticeCurrent(),
+        // Provider throttles may wait after the asynchronous dispatch check.
+        assertDirectAdapterHandoff: assertNoticeCurrent,
         abortSignal: AbortSignal.timeout(10_000),
       });
       if (result.deliveryStatus === "failed" || result.deliveryStatus === "partial_failed") {
