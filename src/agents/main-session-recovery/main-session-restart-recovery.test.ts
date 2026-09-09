@@ -1901,7 +1901,7 @@ describe("main-session-restart-recovery", () => {
         text: "I'm continuing your interrupted request after the gateway restart. I'll post the result here.",
         idempotencyKey: `main-session-restart-recovery:${String(gatewayParams().idempotencyKey)}:resumed-notice`,
       });
-      expect(notice?.isCurrent?.()).toBe(true);
+      expect(notice?.isCurrent?.({})).toBe(true);
       const current = loadSessionEntry({ sessionKey, storePath });
       if (!current) {
         throw new Error("expected recovered session");
@@ -1909,11 +1909,11 @@ describe("main-session-restart-recovery", () => {
       await writeStore(sessionsDir, {
         [sessionKey]: { ...current, abortedLastRun: true },
       });
-      expect(notice?.isCurrent?.()).toBe(false);
+      expect(notice?.isCurrent?.({})).toBe(false);
       await writeStore(sessionsDir, {
         [sessionKey]: { ...current, sessionId: "replacement-session" },
       });
-      expect(notice?.isCurrent?.()).toBe(false);
+      expect(notice?.isCurrent?.({})).toBe(false);
     },
   );
 
@@ -4330,6 +4330,7 @@ describe("main-session-restart-recovery", () => {
     expect(result).toEqual({ started: 1, settled: 0, failed: 0, skipped: 0 });
     expect(callGateway).toHaveBeenCalledOnce();
     expect(gatewayParams().idempotencyKey).toBe("recovery-main");
+    expect(sendRecoveryNotice).not.toHaveBeenCalled();
     expect(gatewayParams()).toMatchObject({
       expectedExistingSessionId: "main-session",
       internalRuntimeHandoffId: expect.any(String),

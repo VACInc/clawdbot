@@ -328,7 +328,11 @@ When a recovered turn starts with an eligible channel delivery route, OpenClaw
 sends a resumption notice to that conversation, retaining its account and topic.
 The final reply uses the same delivery route. Transcript-only turns stay private,
 and a turn that has already finished does not receive a late resumption notice.
-A failed notice does not restart or replay the recovered work.
+A failed notice does not restart or replay the recovered work. Resumption notices
+are best-effort and live-only: automatic-delivery permission and the recovery
+owner are rechecked immediately before the channel send. They are not replayed
+from the outbound queue; terminal-failure notice retries and normal final-reply
+delivery are unchanged.
 
 Startup reconciliation retries transient failures up to three times with
 exponential backoff. Separately, each interrupted main-session cycle has a
