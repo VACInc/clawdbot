@@ -358,16 +358,6 @@ resolved heartbeat delivery target before the heartbeat model run starts and
 uses the shared typing keepalive/cleanup lifecycle. Add
 `heartbeat.clearTyping(...)` when the platform needs an explicit stop signal.
 
-Owner-bound restart recovery uses the optional `heartbeat.sendTypingV2(...)`
-hook instead. Its versioned request requires an `AbortSignal` and a synchronous
-`assertPlatformSendAuthorized()` callback. Carry both through asynchronous
-preparation, retries, and rate-limit queues; recheck the callback immediately
-before every provider request. Never cache a successful authorization check.
-Recovery does not fall back to the unguarded legacy hook: without V2 support it
-omits typing and leaves final-reply delivery unchanged. Existing
-`heartbeat.sendTyping(...)` callers remain source-compatible; no removal date
-is set for that legacy heartbeat contract.
-
 ### Media source params
 
 Resolve account media limits with `resolveChannelMediaMaxBytes(...)` from
