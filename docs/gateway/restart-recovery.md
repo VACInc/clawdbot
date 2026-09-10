@@ -349,6 +349,13 @@ when the turn settles, its recovery owner changes, or the gateway closes, and
 respects `typingMode: "never"`. Other channels can opt in through the guarded
 typing hook; unsupported channels still receive the resumption notice.
 
+Channel plugins opt in with `heartbeat.sendTypingGuarded(...)`. Alongside the
+recovery delivery target, core supplies an `AbortSignal` and an
+`assertPlatformSendAuthorized` callback. Plugins must honor cancellation through
+queued sends and invoke the callback immediately before the platform request,
+after asynchronous preparation. Recovery does not fall back to the unguarded
+`heartbeat.sendTyping(...)` hook.
+
 Startup reconciliation retries transient failures up to three times with
 exponential backoff. Separately, each interrupted main-session cycle has a
 durable budget of three charged automatic dispatch attempts, retained across
