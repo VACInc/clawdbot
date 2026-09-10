@@ -358,6 +358,13 @@ resolved heartbeat delivery target before the heartbeat model run starts and
 uses the shared typing keepalive/cleanup lifecycle. Add
 `heartbeat.clearTyping(...)` when the platform needs an explicit stop signal.
 
+To support typing during restart recovery, also expose
+`heartbeat.sendTypingGuarded(...)`. It receives the same target plus an
+`AbortSignal` and `assertPlatformSendAuthorized` callback. Honor cancellation
+through queued sends and invoke the callback immediately before the platform
+request, after any asynchronous preparation. Core does not fall back to the
+unguarded hook for recovery typing.
+
 ### Media source params
 
 Resolve account media limits with `resolveChannelMediaMaxBytes(...)` from

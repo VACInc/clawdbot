@@ -35,7 +35,18 @@ export type GatewayApprovalEventPublisher = {
   publishResolved: (kind: ChannelApprovalKind, resolved: unknown) => void;
 };
 
+export type GatewayRecoveryTypingParams = {
+  agentId?: string;
+  runId: string;
+  channel: string;
+  to: string;
+  accountId?: string;
+  threadId?: string | number;
+  isCurrent: (cfg: OpenClawConfig) => boolean;
+};
+
 export type GatewayRecoveryRuntime = {
+  startRecoveryTyping?: (params: GatewayRecoveryTypingParams) => () => void;
   dispatchAgent: <T = unknown>(
     params: AgentRunRequest,
     timeoutMs?: number,
