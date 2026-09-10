@@ -53,16 +53,27 @@ export type GatewayRecoveryRuntime = {
     timeoutMs?: number,
     signal?: AbortSignal,
   ) => Promise<T>;
-  sendRecoveryNotice: (params: {
-    channel: string;
-    to: string;
-    accountId?: string;
-    threadId?: string | number;
-    text: string;
-    idempotencyKey: string;
-    /** Revalidated with current configuration through the physical send boundary. */
-    isCurrent?: (cfg: OpenClawConfig) => boolean;
-  }) => Promise<{
+  sendRecoveryNotice: (
+    params: {
+      channel: string;
+      to: string;
+      accountId?: string;
+      threadId?: string | number;
+      text: string;
+      idempotencyKey: string;
+    } & (
+      | {
+          /** Main-session announcements cannot outlive their process-local owner. */
+          liveOnly: true;
+          isCurrent: (cfg: OpenClawConfig) => boolean;
+        }
+      | {
+          /** Existing callers retain durable retry and deduplication by default. */
+          liveOnly?: false;
+          isCurrent?: (cfg: OpenClawConfig) => boolean;
+        }
+    ),
+  ) => Promise<{
     /** True when delivery produced zero platform results (policy/channel suppression). */
     suppressed: boolean;
   }>;
