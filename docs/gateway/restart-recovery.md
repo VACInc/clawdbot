@@ -344,6 +344,11 @@ owner are rechecked immediately before the channel send. They are not replayed
 from the outbound queue; terminal-failure notice retries and normal final-reply
 delivery are unchanged.
 
+Telegram renews its typing indicator while the recovered turn runs. Typing stops
+when the turn settles, its recovery owner changes, or the gateway closes, and
+respects `typingMode: "never"`. Other channels can opt in through the guarded
+typing hook; unsupported channels still receive the resumption notice.
+
 Startup reconciliation retries transient failures up to three times with
 exponential backoff. Separately, each interrupted main-session cycle has a
 durable budget of three charged automatic dispatch attempts, retained across

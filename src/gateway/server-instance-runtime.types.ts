@@ -37,12 +37,23 @@ export type GatewayApprovalEventPublisher = {
 
 export type GatewayRecoverySessionMethod = "chat.history" | "chat.abort" | "sessions.delete";
 
+export type GatewayRecoveryTypingParams = {
+  agentId?: string;
+  runId: string;
+  channel: string;
+  to: string;
+  accountId?: string;
+  threadId?: string | number;
+  isCurrent: (cfg: OpenClawConfig) => boolean;
+};
+
 export type GatewayRecoveryRuntime = {
   dispatchSessionMethod: <T = unknown>(
     method: GatewayRecoverySessionMethod,
     params: unknown,
     options?: { timeoutMs?: number; signal?: AbortSignal; assertCurrent?: () => void },
   ) => Promise<T>;
+  startRecoveryTyping?: (params: GatewayRecoveryTypingParams) => () => void;
   dispatchAgent: <T = unknown>(
     params: AgentRunRequest,
     timeoutMs?: number,
