@@ -97,6 +97,7 @@ export async function announceRestartRecoveryResumption(
       ...params.deliveryContext,
       text: "I'm continuing your interrupted request after the gateway restart. I'll post the result here.",
       idempotencyKey: `main-session-restart-recovery:${params.recoveryRunId}:resumed-notice`,
+      liveOnly: true,
       isCurrent,
     });
   } catch (error) {

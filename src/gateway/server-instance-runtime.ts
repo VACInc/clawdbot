@@ -232,9 +232,9 @@ export function createGatewayInstanceRuntime(
         gatewayOwnedDelivery: true,
         bestEffort: true,
         idempotencyKey: payload.idempotencyKey,
-        // Queue replay cannot reconstruct a process-local resumption predicate.
-        // Unguarded terminal notices retain their durable retry/deduplication path.
-        ...(payload.isCurrent
+        // Only an explicitly live-only announcement declines durable custody.
+        // Existing guarded callers still need deduplication across owner retries.
+        ...(payload.liveOnly
           ? { skipQueue: true }
           : {
               deliveryIntentId: payload.idempotencyKey,

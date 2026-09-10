@@ -163,6 +163,7 @@ describe("recovery notice final transport fence", () => {
               accountId: "default",
               text: noticeText,
               idempotencyKey: "notice-" + mode,
+              liveOnly: true,
               isCurrent: () => policyCurrent,
             });
         notice = operation.then(
