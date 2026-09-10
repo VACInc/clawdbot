@@ -137,7 +137,7 @@ vi.mock("../../gateway/call.js", () => ({
 const sendRecoveryNotice = vi.fn<GatewayRecoveryRuntime["sendRecoveryNotice"]>(async () => ({
   suppressed: false,
 }));
-let dispatchSettlement = createDeferred<void>();
+let dispatchSettlement = createDeferred();
 const mockRecoveryRuntime = {
   dispatchSessionMethod: vi.fn(),
   dispatchAgent: async <T>(
@@ -214,7 +214,7 @@ function loadSessionEntry(
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  dispatchSettlement = createDeferred<void>();
+  dispatchSettlement = createDeferred();
   vi.mocked(callGateway).mockReset();
   vi.mocked(callGateway).mockImplementation(async () => ({ runId: "run-resumed" }));
   resetAgentEventsForTest();
