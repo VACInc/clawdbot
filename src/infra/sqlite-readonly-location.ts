@@ -53,7 +53,7 @@ export type PreparedSqliteReadOnlyLocation = {
   location: string;
 };
 
-class SqliteSourceChangedError extends Error {}
+export class SqliteSourceChangedError extends Error {}
 
 function sqliteSnapshotStagingError(tempDir: string, cause: unknown, allocation = false): unknown {
   for (let depth = 0, error = cause; depth < 8 && error instanceof Error; depth += 1) {
@@ -84,7 +84,7 @@ function statIfPresent(pathname: string): BigIntStats | undefined {
   }
 }
 
-function readSourceSidecars(pathname: string): SourceSidecars {
+export function readSourceSidecars(pathname: string): SourceSidecars {
   return {
     journal: Boolean(statIfPresent(`${pathname}-journal`)),
     shm: Boolean(statIfPresent(`${pathname}-shm`)),
@@ -119,7 +119,7 @@ function openPinnedFile(pathname: string): PinnedFile {
   }
 }
 
-function readSourceJournalMode(pathname: string): SourceJournalMode {
+export function readSourceJournalMode(pathname: string): SourceJournalMode {
   const source = openPinnedFile(pathname);
   try {
     const header = Buffer.alloc(SQLITE_HEADER_BYTES);
@@ -266,7 +266,7 @@ function replaceFile(sourcePath: string, targetPath: string): void {
   fs.renameSync(sourcePath, targetPath);
 }
 
-function isSqliteReadOnlyError(error: unknown): boolean {
+export function isSqliteReadOnlyError(error: unknown): boolean {
   let current = error;
   for (let depth = 0; depth < 8 && current && typeof current === "object"; depth += 1) {
     const details = current as { cause?: unknown; errcode?: unknown };
