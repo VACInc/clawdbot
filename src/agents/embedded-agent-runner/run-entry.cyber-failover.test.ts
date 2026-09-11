@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { recordModelFallbackStop } from "../failover-error.js";
 import { resetFallbackSkipCacheForTest } from "../fallback-skip-cache.test-support.js";
 import { runEmbeddedAgentEntry } from "./run-entry.js";
 import { initialAttemptOptions, type FallbackRunnerParams } from "./run-entry.test-support.js";
@@ -275,6 +276,73 @@ describe("runEmbeddedAgentEntry cyber failover", () => {
     expect(result.attempts).toContainEqual(
       expect.objectContaining({ code: "OPENAI_CYBER_POLICY_REFUSAL" }),
     );
+  });
+
+  it.each([
+    {
+      name: "a recorded terminal stop",
+      makeError: () => {
+        const error = new Error("recorded terminal stop");
+        recordModelFallbackStop(error);
+        return error;
+      },
+    },
+    {
+      // The fallback runner deliberately throws an unclassified error when the
+      // attempt already committed work and may not be replaced.
+      name: "an unclassified committed-work throw",
+      makeError: () => new Error("attempt committed work; cannot fall back"),
+    },
+  ])("propagates $name thrown by the Daybreak retry", async ({ makeError }) => {
+    const thrown = makeError();
+    state.runWithModelFallback.mockImplementation(async (params: FallbackRunnerParams) => {
+      if (params.model === "gpt-daybreak-blue-latest") {
+        throw thrown;
+      }
+      const candidate = await params.run(
+        params.provider,
+        params.model,
+        initialAttemptOptions(params),
+      );
+      await params.classifyResult?.({
+        result: candidate,
+        provider: params.provider,
+        model: params.model,
+        attempt: 1,
+        total: 1,
+      });
+      return {
+        outcome: "completed" as const,
+        result: candidate,
+        provider: params.provider,
+        model: params.model,
+        attempts: [],
+      };
+    });
+
+    await expect(
+      runEmbeddedAgentEntry({
+        selection: { cfg: {}, provider: "openai", model: "gpt-5.6" },
+        identity: { runId: "run-cyber-throw", agentId: "main", sessionId: "session-1" },
+        harness: createDirectHarness(),
+        behavior: { kind: "command-rpc", hasCommittedSideEffect: () => false },
+        sessionOverride: { kind: "preserve" },
+        runCandidate: async (provider, model) => ({
+          ...makeResult({ provider, model }),
+          payloads: [{ text: "policy refusal", isError: true }],
+          meta: {
+            ...makeResult({ provider, model }).meta,
+            agentMeta: {
+              sessionId: "session-1",
+              provider,
+              model,
+              agentHarnessId: "openclaw",
+              providerRefusal: { provider: "openai", category: "cyber" },
+            },
+          },
+        }),
+      }),
+    ).rejects.toBe(thrown);
   });
 
   it("keeps a cyber refusal terminal for a strict model selection", async () => {

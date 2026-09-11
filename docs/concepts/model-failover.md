@@ -87,8 +87,11 @@ terminal until the operator unlocks the selection.
 If the Daybreak attempt fails without committing work, OpenClaw preserves the original provider
 refusal instead of trying unrelated configured fallbacks. If the retry already executed a tool or
 delivered output before failing, its own result is kept instead, because its replay verdict,
-delivery evidence, and terminal receipt describe what actually ran. An authorization failure cools
-down that target for the current session before another cyber refusal probes it again.
+delivery evidence, and terminal receipt describe what actually ran. If the retry throws anything
+other than an ordinary failover-class error, that exception propagates unchanged: a recorded
+terminal stop prohibits replay, and an unclassified throw is how the fallback runner reports an
+attempt that already committed work. An authorization failure cools down that target for the
+current session before another cyber refusal probes it again.
 
 ```json5
 {

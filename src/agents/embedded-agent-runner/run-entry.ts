@@ -501,13 +501,16 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
           sessionId: params.identity.sessionId,
           lane: params.identity.lane,
         });
-        if (resolution.kind === "coordination") {
+        // Only a failover-class failure means the retry is interchangeable with
+        // the refusal it replaced. A recorded terminal stop prohibits replay, an
+        // unclassified throw is how the fallback runner reports that the attempt
+        // already committed work, and coordination failures never belonged to a
+        // model. Replacing any of those with the initial refusal would erase the
+        // retry's stop identity and report that nothing ran.
+        if (resolution.kind !== "failover") {
           throw error;
         }
-        if (
-          resolution.kind === "failover" &&
-          (resolution.error.reason === "auth" || resolution.error.reason === "auth_permanent")
-        ) {
+        if (resolution.error.reason === "auth" || resolution.error.reason === "auth_permanent") {
           recordEmbeddedCyberFailoverTargetUnavailable({
             sessionId: params.identity.sessionId,
             target,
