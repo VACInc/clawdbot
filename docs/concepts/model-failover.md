@@ -57,6 +57,50 @@ reason `agent_run_terminal_timeout` or `idle_timeout_circuit_breaker`. These are
 terminal stops, not provider failures or requests to try another model. The
 existing run deadline and cost limits still apply.
 
+## Automatic cyber-policy escalation
+
+The embedded OpenClaw runtime retries one replay-safe OpenAI cyber-policy refusal on Daybreak
+Blue. This includes normal embedded turns using the ChatGPT-authenticated OpenAI Responses
+transport, not only Codex plugin sessions. That transport projects OpenAI's structured
+`cyberPolicy` error into the refusal metadata used by this policy. Generic refusal text without a
+structured cyber category remains terminal.
+
+This policy route is turn-local: it does not change the selected session model and it does not send
+ordinary provider failures to Daybreak. Codex-backed sessions keep their separate plugin-owned
+policy described in [Codex harness runtime behavior](/plugins/codex-harness/runtime-behavior#automatic-daybreak-escalation).
+
+The default target is `openai/gpt-daybreak-blue-latest`. The retry runs only when all of these are
+true:
+
+- the selected embedded attempt reports `provider_refusal` with provider `openai` and category
+  `cyber`;
+- the attempt's replay metadata proves that no tool or delivery side effect would be repeated;
+- the target differs from the model that was refused; and
+- the feature is enabled.
+
+If the Daybreak attempt fails, OpenClaw preserves the original provider refusal instead of trying
+unrelated configured fallbacks. An authorization failure cools down that target for the current
+session before another cyber refusal probes it again.
+
+```json5
+{
+  agents: {
+    defaults: {
+      embeddedAgent: {
+        cyberFailover: {
+          mode: "auto", // or "off"
+          model: "openai/gpt-daybreak-blue-latest",
+          cooloffMs: 600000,
+        },
+      },
+    },
+  },
+}
+```
+
+General model fallback ordering is unchanged. A non-cyber refusal, a Codex/native-harness result,
+or any replay-unsafe attempt remains terminal under the existing refusal policy.
+
 ## Selection source policy
 
 The selection source controls whether the fallback chain is allowed:

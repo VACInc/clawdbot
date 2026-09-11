@@ -586,6 +586,14 @@ export const streamOpenAICodexResponses: StreamFunction<
         // partialJson is only a streaming scratch buffer; never persist it.
         delete (block as { partialJson?: string }).partialJson;
       }
+      const providerRefusal = readCodexProviderRefusal(normalizedError);
+      if (providerRefusal) {
+        appendAssistantMessageDiagnostic(output, {
+          type: "provider_refusal",
+          timestamp: Date.now(),
+          details: { provider: "openai", category: providerRefusal.category },
+        });
+      }
       const terminal = assignTransportErrorDetails(output, normalizedError, options?.signal);
       // Log only locally-derived facts: timing and a fixed failure category. No
       // projected provider field (message, body, code, type, name) is logged —
@@ -739,6 +747,38 @@ function resolveCodexWebSocketUrl(baseUrl?: string): string {
 // ============================================================================
 // Response Processing
 // ============================================================================
+
+type CodexProviderRefusalCategory = "bio" | "cyber" | "misalignment";
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readCodexProviderRefusal(
+  error: unknown,
+): { category: CodexProviderRefusalCategory } | undefined {
+  if (!(error instanceof CodexApiError)) {
+    return undefined;
+  }
+  const payload = error.payload;
+  const nested = isJsonRecord(payload?.error) ? payload.error : undefined;
+  const codexErrorInfo = payload?.codexErrorInfo ?? nested?.codexErrorInfo;
+  if (codexErrorInfo === "cyberPolicy") {
+    return { category: "cyber" };
+  }
+  if (codexErrorInfo === "misalignmentPolicyViolation") {
+    return { category: "misalignment" };
+  }
+  const message =
+    typeof payload?.message === "string"
+      ? payload.message
+      : typeof nested?.message === "string"
+        ? nested.message
+        : "";
+  return message.startsWith("This content was flagged for possible biological risk.")
+    ? { category: "bio" }
+    : undefined;
+}
 
 class CodexApiError extends Error {
   readonly code?: string;
