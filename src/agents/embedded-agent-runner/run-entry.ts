@@ -219,14 +219,17 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
   // delivered its reply, producing a duplicate visible answer (#113788). Consult the
   // same live delivery evidence the result classifier already uses so both exit
   // paths suppress fallback after a delivered reply.
-  const canFallbackAfterError = committedSideEffect
-    ? () => !committedSideEffect()
+  const hasCommittedSideEffect = committedSideEffect
+    ? () => committedSideEffect()
     : readChannelDeliveryEvidence
       ? () => {
           const evidence = readChannelDeliveryEvidence();
-          return !evidence.hasDirectlySentBlockReply && !evidence.hasBlockReplyPipelineOutput;
+          return evidence.hasDirectlySentBlockReply || evidence.hasBlockReplyPipelineOutput;
         }
       : undefined;
+  const canFallbackAfterError = hasCommittedSideEffect
+    ? () => !hasCommittedSideEffect()
+    : undefined;
   try {
     let capturedCyberRefusal: { provider: string; model: string } | undefined;
     const runFallbackSearch = (
@@ -501,13 +504,16 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
           sessionId: params.identity.sessionId,
           lane: params.identity.lane,
         });
-        // Only a failover-class failure means the retry is interchangeable with
-        // the refusal it replaced. A recorded terminal stop prohibits replay, an
-        // unclassified throw is how the fallback runner reports that the attempt
-        // already committed work, and coordination failures never belonged to a
-        // model. Replacing any of those with the initial refusal would erase the
-        // retry's stop identity and report that nothing ran.
-        if (resolution.kind !== "failover") {
+        // Only a failover-class failure that committed nothing is interchangeable
+        // with the refusal it replaced. A recorded terminal stop prohibits replay
+        // and coordination failures never belonged to a model, so neither may be
+        // swapped out. Error class alone is not enough: `runWithModelFallback`
+        // rethrows a recognized provider error such as `overloaded` once
+        // `canFallbackAfterError` reports committed work, and that throw still
+        // resolves as `failover`. Consult the same live delivery evidence the
+        // runner used, or a delivered reply's failure identity would be replaced
+        // by the initial refusal and reported as though nothing ran.
+        if (resolution.kind !== "failover" || hasCommittedSideEffect?.() === true) {
           throw error;
         }
         if (resolution.error.reason === "auth" || resolution.error.reason === "auth_permanent") {
