@@ -754,11 +754,27 @@ function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * Structured refusal code carried by the OpenAI Responses transport. Every
+ * terminal Responses path preserves it: a non-OK HTTP body parsed by
+ * {@link parseErrorResponse}, an SSE/WebSocket `error` event mapped by
+ * {@link extractCodexEventError}, and a `response.failed` event normalized into
+ * {@link ResponsesStreamFailure}. Only the app-server surface carries the
+ * `codexErrorInfo` discriminator, so both shapes must be read here.
+ */
+const RESPONSES_CYBER_POLICY_ERROR_CODE = "cyber_policy";
+
 function readCodexProviderRefusal(
   error: unknown,
 ): { category: CodexProviderRefusalCategory } | undefined {
+  if (error instanceof ResponsesStreamFailure) {
+    return error.code === RESPONSES_CYBER_POLICY_ERROR_CODE ? { category: "cyber" } : undefined;
+  }
   if (!(error instanceof CodexApiError)) {
     return undefined;
+  }
+  if (error.code === RESPONSES_CYBER_POLICY_ERROR_CODE) {
+    return { category: "cyber" };
   }
   const payload = error.payload;
   const nested = isJsonRecord(payload?.error) ? payload.error : undefined;

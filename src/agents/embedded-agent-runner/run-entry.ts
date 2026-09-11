@@ -28,9 +28,11 @@ import type {
 import type { ModelManifestNormalizationContext } from "../model-ref-shared.js";
 import { resolveAgentRunAbortLifecycleFields } from "../run-termination.js";
 import {
+  didEmbeddedCyberFailoverTargetCommitWork,
   EMBEDDED_CYBER_FAILOVER_TRIGGER_CODE,
   isEmbeddedCyberFailoverTargetSkipped,
   isEmbeddedCyberFailoverTargetUsable,
+  isEmbeddedModelSelectionStrict,
   isSameEmbeddedCyberFailoverTarget,
   recordEmbeddedCyberFailoverTargetUnavailable,
   resolveEmbeddedCyberFailoverConfig,
@@ -406,6 +408,7 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
     if (
       capturedCyberRefusal &&
       target &&
+      !isEmbeddedModelSelectionStrict(params.selection) &&
       !isSameEmbeddedCyberFailoverTarget(capturedCyberRefusal, target) &&
       !isEmbeddedCyberFailoverTargetSkipped({
         sessionId: params.identity.sessionId,
@@ -451,13 +454,6 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
             ],
           };
         } else {
-          if (targetFallbackResult.result.turnAttempt) {
-            discardContextEngineTurnAttemptIntent({
-              facts: targetFallbackResult.result.turnAttempt,
-              lease: contextEngineLogicalTurnLease,
-            });
-            unsettledContextEngineTurnAttempt = undefined;
-          }
           recordEmbeddedCyberFailoverTargetUnavailable({
             sessionId: params.identity.sessionId,
             target,
@@ -465,11 +461,38 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
             attempts: targetFallbackResult.attempts,
             cooloffMs: cyberFailover.cooloffMs,
           });
-          assistantErrorTranscript.restore(originalErrorTranscript);
-          fallbackResult = {
-            ...originalFallbackResult,
-            result: { ...originalFallbackResult.result, turnAttempt: undefined },
-          };
+          // The retry runs the same turn with tools enabled, so a failure after
+          // it committed work is not interchangeable with the original refusal.
+          // Only a retry that demonstrably made no progress may be replaced.
+          if (didEmbeddedCyberFailoverTargetCommitWork(targetFallbackResult.result.result)) {
+            fallbackResult = {
+              ...targetFallbackResult,
+              attempts: [
+                ...originalFallbackResult.attempts,
+                {
+                  provider: capturedCyberRefusal.provider,
+                  model: capturedCyberRefusal.model,
+                  error: "OpenAI cyber policy refusal",
+                  reason: "unknown",
+                  code: EMBEDDED_CYBER_FAILOVER_TRIGGER_CODE,
+                },
+                ...targetFallbackResult.attempts,
+              ],
+            };
+          } else {
+            if (targetFallbackResult.result.turnAttempt) {
+              discardContextEngineTurnAttemptIntent({
+                facts: targetFallbackResult.result.turnAttempt,
+                lease: contextEngineLogicalTurnLease,
+              });
+              unsettledContextEngineTurnAttempt = undefined;
+            }
+            assistantErrorTranscript.restore(originalErrorTranscript);
+            fallbackResult = {
+              ...originalFallbackResult,
+              result: { ...originalFallbackResult.result, turnAttempt: undefined },
+            };
+          }
         }
       } catch (error) {
         const resolution = resolveModelFallbackError(error, {
