@@ -30,6 +30,55 @@ function preamble(host: ReturnType<typeof createHost>, itemId: string, text: str
 
 describe("keyed commentary after an unphased live stream", () => {
   afterEach(() => vi.useRealTimers());
+  it.each(["", "A separate earlier observation.\n\n"])(
+    "retires split commentary without consuming an earlier occurrence: %j",
+    (prefix) => {
+      useToolStreamFakeTimers();
+      const host = createHost({ chatRunId: "run-1" });
+      const snapshots = [
+        ...(prefix ? [prefix] : []),
+        `${prefix}I'll check`,
+        `${prefix}I'll check what`,
+      ];
+      for (const [index, text] of snapshots.entries()) {
+        host.chatStream = text;
+        handleAgentEvent(host, {
+          runId: "run-1",
+          seq: index + 1,
+          stream: "tool",
+          ts: TOOL_STREAM_TEST_NOW + index,
+          sessionKey: "main",
+          data: { phase: "result", toolCallId: "call-" + index, name: "read", result: {} },
+        });
+      }
+      const text = "I'll check what context reaches the agent.";
+      preamble(host, "item-a", text, 10);
+      expect(visibleParts(host)).toEqual([
+        ...(prefix ? [{ text: prefix.trim(), itemId: undefined }] : []),
+        { text, itemId: "item-a" },
+      ]);
+    },
+  );
+
+  it.each([
+    { persisted: true as const, retiredItemId: "another-item" },
+    { boundaryRunId: "steered-run", boundaryMarker: true as const },
+  ])("does not acquire fragments across an existing owner: %j", (boundary) => {
+    const host = createHost({ chatRunId: "run-1", chatStream: "I'll check what" });
+    host.chatStreamSegments = [
+      { text: "I'll", ts: 1, runId: "run-1" },
+      { text: "I'll check", ts: 2, runId: "run-1", ...boundary },
+    ];
+    const before = visibleParts(host);
+    const text = "I'll check what context reaches the agent.";
+    preamble(host, "item-a", text, 3);
+    expect(visibleParts(host)).toEqual([
+      ...before.slice(0, -1),
+      { text, itemId: "item-a" },
+      ...before.slice(-1),
+    ]);
+  });
+
   it("renders tool-boundary commentary once across item and chat stream", () => {
     useToolStreamFakeTimers();
     const host = createHost({ chatRunId: "run-1" });
