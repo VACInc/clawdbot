@@ -50,12 +50,14 @@ import {
   type EmbeddedAgentRunEntryTerminal,
   type RunEntryTerminalBehavior,
 } from "./run-entry-terminal.js";
+import type { AuthProfileFailurePolicy } from "./run/auth-profile-failure-policy.types.js";
 import type { EmbeddedAgentRunResult } from "./types.js";
 
 export type { EmbeddedAgentRunEntryTerminal } from "./run-entry-terminal.js";
 
 type RunEntryCandidateOptions = {
   assistantErrorTranscript: AssistantErrorTranscript;
+  authProfileFailurePolicy?: AuthProfileFailurePolicy;
   classifyResult: (result: EmbeddedAgentRunResult) => ModelFallbackResultClassification;
   allowTransientCooldownProbe?: boolean;
   isFinalFallbackAttempt?: boolean;
@@ -370,6 +372,12 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
           };
           const result = await params.runCandidate(provider, model, {
             assistantErrorTranscript,
+            // The original OpenAI refusal proves this turn's credential already
+            // reached the provider. Keep a target-only entitlement rejection from
+            // poisoning shared auth health for ordinary OpenAI model selection.
+            ...(runOptions.forceFallbackRetry
+              ? { authProfileFailurePolicy: "local" as const }
+              : {}),
             classifyResult,
             allowTransientCooldownProbe: options?.allowTransientCooldownProbe,
             isFinalFallbackAttempt: options?.isFinalFallbackAttempt,

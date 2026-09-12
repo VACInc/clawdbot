@@ -76,7 +76,8 @@ describe("runEmbeddedAgentEntry cyber failover against the real fallback runner"
     expect(delivered).toBe(true);
   });
 
-  it("restores the original refusal when the Daybreak retry fails without committing work", async () => {
+  it("restores the original refusal and keeps Daybreak auth bookkeeping local", async () => {
+    const authFailurePolicies: Array<string | undefined> = [];
     const failure = new FailoverError("daybreak overloaded before any output", {
       provider: "openai",
       model: "gpt-daybreak-blue-latest",
@@ -93,7 +94,8 @@ describe("runEmbeddedAgentEntry cyber failover against the real fallback runner"
       },
       behavior: { kind: "command-rpc", hasCommittedSideEffect: () => false },
       sessionOverride: { kind: "preserve" },
-      runCandidate: async (provider, model) => {
+      runCandidate: async (provider, model, options) => {
+        authFailurePolicies.push(options.authProfileFailurePolicy);
         if (model === "gpt-daybreak-blue-latest") {
           throw failure;
         }
@@ -103,5 +105,6 @@ describe("runEmbeddedAgentEntry cyber failover against the real fallback runner"
 
     expect(result.model).toBe("gpt-5.6");
     expect(result.result.payloads).toEqual([{ text: "policy refusal", isError: true }]);
+    expect(authFailurePolicies).toEqual([undefined, "local"]);
   });
 });
