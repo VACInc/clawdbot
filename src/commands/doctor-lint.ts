@@ -34,7 +34,10 @@ import {
 } from "../plugins/install-root-context.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { closeOpenClawStateDatabaseByPathAsync } from "../state/openclaw-state-db-cache.js";
-import { withArtifactPreservingStateReads } from "../state/openclaw-state-db-readonly.js";
+import {
+  withArtifactPreservingStateReads,
+  withDisposableOpenClawStateReads,
+} from "../state/openclaw-state-db-readonly.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { isPostCoreConvergencePass, isUpdateDoctorLintPass } from "./doctor/shared/update-phase.js";
 
@@ -355,12 +358,11 @@ async function withReadOnlyPluginStateSnapshot<T>(
       // Global readers and OAuth refresh/challenge writers share the private state view.
       outcome = {
         ok: true,
-        value: await withPluginInstallRoots(
-          { ...installRoots, stateDir: privateStateDir },
-          async () => {
+        value: await withDisposableOpenClawStateReads(privateDatabasePath, () =>
+          withPluginInstallRoots({ ...installRoots, stateDir: privateStateDir }, async () => {
             runStarted = true;
             return await run(privateEnv);
-          },
+          }),
         ),
       };
     } catch (error) {
