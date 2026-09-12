@@ -1705,6 +1705,7 @@ function parseErrorResponse(raw: string, response: Response): CodexApiError {
   let message = raw || statusText || "Request failed";
   let friendlyMessage: string | undefined;
   let code: string | undefined;
+  let payload: Record<string, unknown> | undefined;
 
   try {
     const parsed = JSON.parse(raw) as {
@@ -1716,6 +1717,7 @@ function parseErrorResponse(raw: string, response: Response): CodexApiError {
         resets_at?: number;
       };
     };
+    payload = isJsonRecord(parsed) ? parsed : undefined;
     const err = parsed?.error;
     if (err) {
       code = err.code || err.type || undefined;
@@ -1740,7 +1742,11 @@ function parseErrorResponse(raw: string, response: Response): CodexApiError {
   const retryAfterSuffix = Number.isFinite(retryAfterSeconds)
     ? `; Retry-After: ${Math.ceil(retryAfterSeconds ?? 0)} seconds`
     : "";
-  return new CodexApiError(`${friendlyMessage || message}${retryAfterSuffix}`, { code, status });
+  return new CodexApiError(`${friendlyMessage || message}${retryAfterSuffix}`, {
+    code,
+    status,
+    payload,
+  });
 }
 
 // ============================================================================

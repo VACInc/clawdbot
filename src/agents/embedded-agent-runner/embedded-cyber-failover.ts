@@ -8,6 +8,7 @@ import type { ModelManifestNormalizationContext, ModelRef } from "../model-ref-s
 import { modelKey } from "../model-ref-shared.js";
 import { buildModelAliasIndex, resolveModelRefFromString } from "../model-selection-resolve.js";
 import { hasCommittedOutboundDeliveryEvidence } from "./delivery-evidence.js";
+import { hasVisibleAgentPayload } from "./message-visibility.js";
 import type { EmbeddedAgentRunResult } from "./types.js";
 
 export const EMBEDDED_CYBER_FAILOVER_TRIGGER_CODE = "OPENAI_CYBER_POLICY_REFUSAL";
@@ -92,11 +93,17 @@ export function isSameEmbeddedCyberFailoverTarget(current: ModelRef, target: Mod
 }
 
 export function isEmbeddedCyberFailoverTargetUsable(result: EmbeddedAgentRunResult): boolean {
+  const hasErrorPayload = (result.payloads ?? []).some((payload) => payload.isError === true);
   return (
     result.meta.aborted !== true &&
     result.meta.error === undefined &&
     result.meta.agentMeta?.providerRefusal === undefined &&
-    !(result.payloads ?? []).some((payload) => payload.isError === true)
+    (!hasErrorPayload ||
+      hasVisibleAgentPayload(result, {
+        includeErrorPayloads: false,
+        includeReasoningPayloads: false,
+        includeSilentReplyPayloads: false,
+      }))
   );
 }
 

@@ -351,8 +351,12 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
                 acceptedClassification &&
                 "code" in acceptedClassification &&
                 acceptedClassification.code === EMBEDDED_CYBER_FAILOVER_TRIGGER_CODE;
-              if (runOptions.captureCyberRefusal && cyberRefusal) {
-                capturedCyberRefusal = { provider, model };
+              if (runOptions.captureCyberRefusal) {
+                // Classification may run before settled-turn finalization and then
+                // again on its replacement result. Only the current accepted result
+                // may authorize policy escalation; a stale preliminary refusal must
+                // not override a later fallback winner or finalized failure.
+                capturedCyberRefusal = cyberRefusal ? { provider, model } : undefined;
               }
               classified = {
                 result,
@@ -464,10 +468,16 @@ export async function runEmbeddedAgentEntry<T extends EmbeddedAgentRunResult>(
             attempts: targetFallbackResult.attempts,
             cooloffMs: cyberFailover.cooloffMs,
           });
-          // The retry runs the same turn with tools enabled, so a failure after
-          // it committed work is not interchangeable with the original refusal.
-          // Only a retry that demonstrably made no progress may be replaced.
-          if (didEmbeddedCyberFailoverTargetCommitWork(targetFallbackResult.result.result)) {
+          // The retry runs the same turn with tools enabled, so a cancellation or
+          // failure after it committed work is not interchangeable with the original
+          // refusal. Include live caller evidence because result metadata can lag a
+          // command side effect or external delivery that already completed.
+          const targetResult = targetFallbackResult.result.result;
+          if (
+            targetResult.meta.aborted === true ||
+            didEmbeddedCyberFailoverTargetCommitWork(targetResult) ||
+            hasCommittedSideEffect?.() === true
+          ) {
             fallbackResult = {
               ...targetFallbackResult,
               attempts: [
