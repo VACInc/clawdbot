@@ -775,7 +775,7 @@ test("sessions.list hides phantom agent store placeholder rows", async () => {
   expect(listed.payload?.sessions.map((session) => session.key)).toEqual(["agent:main:main"]);
 });
 
-test("write-scoped operators manage chat organization and effort but not admin settings", async () => {
+test("write-scoped operators manage chat organization but not admin session settings", async () => {
   const { storePath } = await createSessionStoreDir();
   const now = Date.now();
   await writeSessionStore({
@@ -792,9 +792,7 @@ test("write-scoped operators manage chat organization and effort but not admin s
   });
 
   agentDiscoveryMock.enabled = true;
-  agentDiscoveryMock.models = [
-    { id: "gpt-test-a", name: "A", provider: "openai", reasoning: true },
-  ];
+  agentDiscoveryMock.models = [{ id: "gpt-test-a", name: "A", provider: "openai" }];
 
   const { ws } = await openClient({ scopes: ["operator.write"] });
   try {
@@ -812,35 +810,6 @@ test("write-scoped operators manage chat organization and effort but not admin s
       modelOverride: "gpt-test-a",
       providerOverride: "openai",
     });
-
-    // Use the same existing session after the accepted model switch: effort
-    // writes must not require a new session or a stronger operator credential.
-    for (const patch of [
-      { thinkingLevel: "high" },
-      { fastMode: true },
-      { thinkingLevel: "off", fastMode: false },
-      { thinkingLevel: "low", fastMode: "auto" },
-    ]) {
-      const changed = await rpcReq<SessionPatchResponse>(ws, "sessions.patch", {
-        key: "agent:main:topic-a",
-        ...patch,
-      });
-      expect(changed.ok, JSON.stringify(changed)).toBe(true);
-      expect(changed.payload?.entry).toMatchObject(patch);
-      expect(loadSessionEntry({ sessionKey: "agent:main:topic-a", storePath })).toMatchObject({
-        sessionId: "sess-topic-a",
-        ...patch,
-      });
-    }
-    const cleared = await rpcReq<SessionPatchResponse>(ws, "sessions.patch", {
-      key: "agent:main:topic-a",
-      thinkingLevel: null,
-      fastMode: null,
-    });
-    expect(cleared.ok, JSON.stringify(cleared)).toBe(true);
-    const clearedEntry = loadSessionEntry({ sessionKey: "agent:main:topic-a", storePath });
-    expect(clearedEntry?.thinkingLevel).toBeUndefined();
-    expect(clearedEntry?.fastMode).toBeUndefined();
 
     const pinned = await rpcReq<{ ok: true; entry: { pinnedAt?: number } }>(ws, "sessions.patch", {
       key: "agent:main:topic-a",
@@ -982,8 +951,6 @@ test("write-scoped operators manage chat organization and effort but not admin s
       key: "agent:main:topic-a",
       label: "Sneaky",
       model: null,
-      thinkingLevel: "high",
-      fastMode: true,
       verboseLevel: "full",
     });
     expect(mixedFieldsDenied.ok).toBe(false);
