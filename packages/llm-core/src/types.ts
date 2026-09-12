@@ -406,6 +406,8 @@ export interface AssistantMessage {
   diagnostics?: AssistantMessageDiagnostic[]; // Redacted provider/runtime diagnostics for failures and recoveries.
   usage: Usage;
   stopReason: StopReason;
+  /** A completed provider response can explicitly request another inference with false. */
+  endTurn?: boolean;
   errorMessage?: string;
   errorCode?: string;
   errorType?: string;

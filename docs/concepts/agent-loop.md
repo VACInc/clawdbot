@@ -23,6 +23,11 @@ execution, streaming, persistence.
 4. `subscribeEmbeddedAgentSession` bridges runtime events to the `agent` stream: tool events to `stream: "tool"`, assistant deltas to `stream: "assistant"`, lifecycle events to `stream: "lifecycle"` (`phase: "start" | "finishing" | "end" | "error"`).
 5. `agent.wait` (`waitForAgentRun`) waits for **lifecycle end/error** on a `runId` and returns `{ status: ok|error|timeout, startedAt, endedAt, error? }`.
 
+For embedded OpenAI Responses turns, `response.completed` finishes one model
+response. If the provider sends `end_turn: false`, the loop requests another
+response even when the completed response contains only text. Existing
+cancellation, host stop decisions, and intentional tool termination still apply.
+
 The wait result also carries the run's `terminalReply` and, when available,
 `terminalReceipt`. A receipt with `sourceReplyDelivered: true` confirms a final
 reply reached the external source conversation. A2A announcements consume that

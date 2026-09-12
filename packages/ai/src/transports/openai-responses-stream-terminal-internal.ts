@@ -334,7 +334,7 @@ export function createResponsesTerminalController(params: {
     response: Extract<
       ResponseStreamEvent,
       { type: "response.completed" | "response.incomplete" }
-    >["response"],
+    >["response"] & { end_turn?: unknown },
     terminalEventType: "response.completed" | "response.incomplete",
   ) => {
     backfillReasoning(response.output ?? []);
@@ -347,6 +347,9 @@ export function createResponsesTerminalController(params: {
     });
     output.stopReason = terminal.stopReason;
     output.errorMessage = terminal.errorMessage;
+    if (terminalEventType === "response.completed" && typeof response.end_turn === "boolean") {
+      output.endTurn = response.end_turn;
+    }
   };
   return {
     finalizeResponse,
