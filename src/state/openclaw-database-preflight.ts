@@ -24,9 +24,10 @@ import {
   prepareSqliteReadOnlyLocation,
 } from "../infra/sqlite-snapshot-source.js";
 import { readSqliteUserVersion, SqliteSchemaVersionError } from "../infra/sqlite-user-version.js";
-import { hasStateDatabaseSourceExclusion, prepareStateDatabaseCanonicalMutation } from "../infra/state-database-coordinator.js";
-import { inspectAgentDatabaseSchemaInWorker } from "./openclaw-agent-schema-inspection-worker.js";
-import type { AgentSchemaInspection } from "./openclaw-agent-schema-inspection.js";
+import {
+  hasStateDatabaseSourceExclusion,
+  prepareStateDatabaseCanonicalMutation,
+} from "../infra/state-database-coordinator.js";
 import { discoverAgentDatabaseMigrationTargets } from "../infra/state-migrations.media-persistence-targets.js";
 import { isValidAgentId } from "../routing/session-key.js";
 import {
@@ -44,6 +45,8 @@ import {
   assertOpenClawAgentCurrentRuntimeSchema,
   readExistingAgentSchemaMeta,
 } from "./openclaw-agent-db-schema-helpers.js";
+import { inspectAgentDatabaseSchemaInWorker } from "./openclaw-agent-schema-inspection-worker.js";
+import type { AgentSchemaInspection } from "./openclaw-agent-schema-inspection.js";
 import {
   describeDeferredStateSchemaPublication,
   formatIncompatibleDatabaseSchemas,
@@ -608,12 +611,15 @@ export async function preflightOpenClawDatabaseSchemas(options: {
           !hasStateDatabaseSourceExclusion(realAgentPath) &&
           !prepareStateDatabaseCanonicalMutation(realAgentPath)
         ) {
-          schemaInspection = await inspectAgentDatabaseSchemaInWorker({
-            pathname: realAgentPath,
-            agentId: row.agentId,
-            supportedVersion: options.supportedVersions.agent,
-            verifyCurrentSchemaShape: options.verifyCurrentSchemaShape,
-          }, options.signal);
+          schemaInspection = await inspectAgentDatabaseSchemaInWorker(
+            {
+              pathname: realAgentPath,
+              agentId: row.agentId,
+              supportedVersion: options.supportedVersions.agent,
+              verifyCurrentSchemaShape: options.verifyCurrentSchemaShape,
+            },
+            options.signal,
+          );
         }
         if (schemaInspection) {
           agentVersion = schemaInspection.version;
