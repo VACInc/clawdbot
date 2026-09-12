@@ -32,6 +32,8 @@ describe("Responses turn continuation", () => {
     { label: "explicit end", endTurn: true, requests: 1 },
     { label: "omitted end_turn", endTurn: undefined, requests: 1 },
     { label: "malformed end_turn", endTurn: "false", requests: 1 },
+    { label: "null end_turn", endTurn: null, requests: 1 },
+    { label: "object end_turn", endTurn: { privateValue: "do not retain" }, requests: 1 },
     { label: "incomplete response", endTurn: false, incomplete: true, requests: 1 },
     { label: "caller cancellation", endTurn: false, cancel: true, requests: 1 },
     { label: "host stop decision", endTurn: false, stop: true, requests: 1 },
@@ -142,6 +144,29 @@ describe("Responses turn continuation", () => {
       expect(requests).toHaveLength(scenario.requests);
       expect(execute).toHaveBeenCalledTimes(scenario.requests > 1 ? 1 : 0);
       expect(events.filter((event) => event.type === "agent_end")).toHaveLength(1);
+      const assistants = result
+        .filter((message) => message.role === "assistant")
+        .filter((message) => message.responseId !== undefined);
+      expect(assistants).toHaveLength(scenario.requests);
+      for (const [index, assistant] of assistants.entries()) {
+        const providerEndTurn = index === 0 ? endTurn : index !== 1;
+        expect(assistant.diagnostics).toEqual([
+          {
+            type: "openai_responses_terminal",
+            timestamp: expect.any(Number),
+            details: {
+              eventType: scenario.incomplete ? "response.incomplete" : "response.completed",
+              endTurn:
+                typeof providerEndTurn === "boolean"
+                  ? providerEndTurn
+                  : providerEndTurn === undefined
+                    ? "absent"
+                    : "invalid",
+            },
+          },
+        ]);
+      }
+      expect(JSON.stringify(requests)).not.toContain("openai_responses_terminal");
       if (scenario.requests === 3) {
         expect(result.at(-1)).toMatchObject({
           role: "assistant",

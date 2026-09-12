@@ -23,6 +23,7 @@ import type {
   ToolCall,
   Usage,
 } from "../types.js";
+import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.js";
 import { captureOpenAIResponsesCompaction } from "./openai-responses-compaction-replay.js";
 import {
   OPENAI_RESPONSES_COMPACTION_REPLAY_TYPE,
@@ -350,6 +351,19 @@ export function createResponsesTerminalController(params: {
     if (terminalEventType === "response.completed" && typeof response.end_turn === "boolean") {
       output.endTurn = response.end_turn;
     }
+    appendAssistantMessageDiagnostic(output, {
+      type: "openai_responses_terminal",
+      timestamp: Date.now(),
+      details: {
+        eventType: terminalEventType,
+        endTurn:
+          typeof response.end_turn === "boolean"
+            ? response.end_turn
+            : response.end_turn === undefined
+              ? "absent"
+              : "invalid",
+      },
+    });
   };
   return {
     finalizeResponse,
