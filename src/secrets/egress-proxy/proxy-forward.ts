@@ -377,6 +377,10 @@ export function forwardSecretEgressRequest(
     return;
   }
   try {
+    // Allocation enforces its own range contract, independent of routing/admission.
+    if (!Number.isSafeInteger(length) || length < 0 || length > MAX_BUFFERED_REQUEST_BODY_BYTES) {
+      throw new RangeError("Invalid buffered request body length");
+    }
     // One exact backing store: chunk count, BufferList nodes and shared slabs
     // cannot amplify retained memory. Every byte is initialized before scanning.
     body = Buffer.allocUnsafeSlow(length);
