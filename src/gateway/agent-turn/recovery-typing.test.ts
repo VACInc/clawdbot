@@ -64,7 +64,7 @@ function fixture(
 describe("recovery typing", () => {
   it("keeps only typing active beyond one minute and stops at command settlement", async () => {
     const f = fixture();
-    const firstTyping = createDeferredCore<void>();
+    const firstTyping = createDeferredCore();
     f.sendTyping.mockImplementationOnce(async () => {
       firstTyping.resolve();
     });
