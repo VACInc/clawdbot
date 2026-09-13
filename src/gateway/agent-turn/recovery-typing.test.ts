@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChannelHeartbeatAdapter } from "../../channels/plugins/types.adapters.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { createRecoveryTypingManager } from "../recovery-typing.js";
 
 const managers: ReturnType<typeof createRecoveryTypingManager>[] = [];
+beforeAll(async () => {
+  // Resolve the real lazy dependency before fake timers can stall its initialization.
+  await import("../../agents/agent-scope-config.js");
+});
 beforeEach(() => {
   vi.useFakeTimers();
 });
@@ -58,7 +62,7 @@ describe("recovery typing", () => {
   it("keeps only typing active beyond one minute and stops at command settlement", async () => {
     const f = fixture();
     const stop = f.manager.start(f.params);
-    await vi.dynamicImportSettled();
+    await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(65_000);
     expect(f.sendTyping.mock.calls.length).toBeGreaterThan(20);
     expect(f.sendTyping).toHaveBeenCalledWith(
@@ -180,7 +184,6 @@ describe("recovery typing", () => {
     const legacy = vi.fn(async () => {});
     const f = fixture({ resolveAdapter: async () => ({ sendTyping: legacy }) });
     f.manager.start(f.params);
-    await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(legacy).not.toHaveBeenCalled();
     expect(f.onError).not.toHaveBeenCalled();
