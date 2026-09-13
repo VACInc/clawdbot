@@ -18,6 +18,7 @@ afterEach(() => {
   for (const manager of managers.splice(0)) {
     manager.close();
   }
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 function fixture(
@@ -64,16 +65,37 @@ function fixture(
 describe("recovery typing", () => {
   it("keeps only typing active beyond one minute and stops at command settlement", async () => {
     const f = fixture();
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    const trace = (phase: string) =>
+      console.info("recovery-typing-clock", {
+        phase,
+        now: Date.now(),
+        real: performance.now(),
+        timers: vi.getTimerCount(),
+        calls: f.sendTyping.mock.calls.length,
+        intervals: intervals.mock.calls.slice(0, 4).map((call) => call[1]),
+      });
+    f.sendTyping.mockImplementation(async () => {
+      if (f.sendTyping.mock.calls.length <= 3) {
+        trace("typing");
+      }
+    });
+    trace("before-start");
     const stop = f.manager.start(f.params);
     await vi.advanceTimersByTimeAsync(0);
+    trace("after-zero");
+    intervals.mockRestore();
     await vi.advanceTimersByTimeAsync(65_000);
+    trace("after-65s");
     expect(f.sendTyping.mock.calls.length).toBeGreaterThan(20);
     expect(f.sendTyping).toHaveBeenCalledWith(
       expect.objectContaining({ to: "123", accountId: "work", threadId: 99 }),
     );
     const count = f.sendTyping.mock.calls.length;
     stop();
+    trace("after-stop");
     await vi.advanceTimersByTimeAsync(10_000);
+    trace("after-10s");
     expect(f.sendTyping).toHaveBeenCalledTimes(count);
     expect(f.clearTyping).toHaveBeenCalledOnce();
   });
