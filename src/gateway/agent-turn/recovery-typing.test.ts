@@ -9,7 +9,10 @@ beforeAll(async () => {
   await import("../../agents/agent-scope-config.js");
 });
 beforeEach(() => {
-  vi.useFakeTimers();
+  // Keep module-loader and transport immediates real while advancing typing deadlines.
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+  });
 });
 afterEach(() => {
   for (const manager of managers.splice(0)) {
