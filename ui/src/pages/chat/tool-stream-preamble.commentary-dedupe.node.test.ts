@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isHiddenAssistantStreamText } from "../../lib/chat/message-visibility.ts";
 import { visibleAssistantStreamParts } from "./stream-reconciliation.ts";
+import { reconcilePersistedAssistantStream } from "./stream-segment-pruning.ts";
 import {
   createHost,
   TOOL_STREAM_TEST_NOW,
@@ -30,55 +31,6 @@ function preamble(host: ReturnType<typeof createHost>, itemId: string, text: str
 
 describe("keyed commentary after an unphased live stream", () => {
   afterEach(() => vi.useRealTimers());
-  it.each(["", "A separate earlier observation.\n\n"])(
-    "retires split commentary without consuming an earlier occurrence: %j",
-    (prefix) => {
-      useToolStreamFakeTimers();
-      const host = createHost({ chatRunId: "run-1" });
-      const snapshots = [
-        ...(prefix ? [prefix] : []),
-        `${prefix}I'll check`,
-        `${prefix}I'll check what`,
-      ];
-      for (const [index, text] of snapshots.entries()) {
-        host.chatStream = text;
-        handleAgentEvent(host, {
-          runId: "run-1",
-          seq: index + 1,
-          stream: "tool",
-          ts: TOOL_STREAM_TEST_NOW + index,
-          sessionKey: "main",
-          data: { phase: "result", toolCallId: "call-" + index, name: "read", result: {} },
-        });
-      }
-      const text = "I'll check what context reaches the agent.";
-      preamble(host, "item-a", text, 10);
-      expect(visibleParts(host)).toEqual([
-        ...(prefix ? [{ text: prefix.trim(), itemId: undefined }] : []),
-        { text, itemId: "item-a" },
-      ]);
-    },
-  );
-
-  it.each([
-    { persisted: true as const, retiredItemId: "another-item" },
-    { boundaryRunId: "steered-run", boundaryMarker: true as const },
-  ])("does not acquire fragments across an existing owner: %j", (boundary) => {
-    const host = createHost({ chatRunId: "run-1", chatStream: "I'll check what" });
-    host.chatStreamSegments = [
-      { text: "I'll", ts: 1, runId: "run-1" },
-      { text: "I'll check", ts: 2, runId: "run-1", ...boundary },
-    ];
-    const before = visibleParts(host);
-    const text = "I'll check what context reaches the agent.";
-    preamble(host, "item-a", text, 3);
-    expect(visibleParts(host)).toEqual([
-      ...before.slice(0, -1),
-      { text, itemId: "item-a" },
-      ...before.slice(-1),
-    ]);
-  });
-
   it("renders tool-boundary commentary once across item and chat stream", () => {
     useToolStreamFakeTimers();
     const host = createHost({ chatRunId: "run-1" });
@@ -258,7 +210,17 @@ describe("keyed commentary after an unphased live stream", () => {
   it("keeps earlier different cumulative text visible when a later occurrence becomes keyed", () => {
     useToolStreamFakeTimers();
     const earlier = "The first observation stays visible.";
-    const host = createHost({ chatRunId: "run-1", chatStream: `${earlier}\n\n` });
+    const saved = {
+      role: "assistant",
+      content: earlier,
+      __openclaw: { id: "earlier", seq: 1, runId: "run-1" },
+    };
+    const host = createHost({
+      chatRunId: "run-1",
+      chatStream: `${earlier}\n\n`,
+      chatMessages: [saved],
+    });
+    reconcilePersistedAssistantStream(host);
     handleAgentEvent(host, {
       runId: "run-1",
       seq: 1,
@@ -269,10 +231,8 @@ describe("keyed commentary after an unphased live stream", () => {
     });
     host.chatStream = `${earlier}\n\n${COMMENTARY}\n\n`;
     preamble(host, "item-a", COMMENTARY, 2);
-    expect(visibleParts(host)).toEqual([
-      { text: earlier, itemId: undefined },
-      { text: COMMENTARY, itemId: "item-a" },
-    ]);
+    expect(host.chatMessages).toEqual([saved]);
+    expect(visibleParts(host)).toEqual([{ text: COMMENTARY, itemId: "item-a" }]);
   });
   it("completes a keyed handoff when the last chat chunk arrives between update and end", () => {
     const text =
